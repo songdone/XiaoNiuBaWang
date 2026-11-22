@@ -1,0 +1,6 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+# The platform controls stopping the old service before replacing its files.
+# Validate paths without modifying or deleting the existing database and saves.
+exec /bin/sh "$(dirname "$0")/lifecycle-common.sh" check

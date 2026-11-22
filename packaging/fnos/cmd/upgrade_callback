@@ -1,0 +1,5 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+# Keep all existing data; the server applies transactional schema migrations.
+exec /bin/sh "$(dirname "$0")/lifecycle-common.sh" prepare

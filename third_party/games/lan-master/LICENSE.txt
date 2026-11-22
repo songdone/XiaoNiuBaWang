@@ -1,0 +1,24 @@
+网络大师 · LAN Master
+Public Domain declaration — original author: Shiru
+
+Official ROM/manual archive: https://shiru.untergrund.net/files/nes/lan_master.zip
+Manual member: lan_master/manual.pdf
+Official source archive: https://shiru.untergrund.net/files/src/lan_master_src.zip
+Source member: lan_master_src/game.asm, lines 1–4
+
+Verbatim source declaration:
+;Lan Master NES game
+;by Shiru (shiru@mail.ru) 05'11
+;Compile with NESASM3
+;The game and its source code are released into Public Domain
+
+Verbatim manual cover text (page 1):
+PD 2011 Shiru
+
+Verbatim English introduction excerpt (page 2):
+The game is not licensed or endorsed by Nintendo company in any way. It is free
+of charge, released into Public Domain, and provided "as is", without warranty or
+responsibility of any kind.
+
+Verbatim manual credit (page 4):
+Code, graphics, music: Shiru

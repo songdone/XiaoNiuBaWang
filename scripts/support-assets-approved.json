@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "application": "xiaoniubawang",
+  "version": "0.1.0",
+  "approval": "User explicitly confirmed these current project originals for this application on 2026-11-22.",
+  "sourceDirectory": "assets/support",
+  "packageDirectory": "app/support",
+  "sourceArchivePolicy": "exclude-private-payment-images",
+  "files": {
+    "wechat-6uos.jpg": {
+      "sha256": "33c845f8464cba9ab14cc923046865de45ddbdc81a6e0f088aaa90bc6719fc94",
+      "bytes": 62806
+    },
+    "alipay-6uos.jpg": {
+      "sha256": "1a1a554d645d73467a802f631e415baaa45e1342e5762de75020981e6eadfdc7",
+      "bytes": 108962
+    }
+  }
+}

@@ -1,0 +1,101 @@
+XiaoNiuBaWang standalone FCEUmm runtime
+
+Corresponding source and rebuild
+
+The runtime is built from libretro/libretro-fceumm commit
+77468e568d9fe9c48d684ca911f1a3fe7259fdf7, plus the declared keyboard patch.
+The complete patched core is in vendor/fceumm/. The original official codeload
+archive and patches/0001-family-subor-keyboard.patch are also included.
+
+From the project root:
+  bash emulator/install-toolchain.sh
+  python3 -I emulator/verify-source.py
+  bash scripts/build-emulator.sh
+  python3 -I emulator/diagnostics/build-matrix-diagnostic.py
+  node emulator/smoke-test.mjs
+
+The compiler is official Emscripten 4.0.20, installed ONLY beneath
+build/20261121-core-01/toolchain/. No Docker daemon or global compiler is needed.
+The installer currently targets the host supported by official emsdk; this build
+was executed on macOS arm64. Local binary archive checksums are in provenance.json.
+JOBS defaults to 4. Override EMSDK_ROOT only for an equivalent 4.0.20 SDK.
+Build outputs go to web/public/cores/. Building does not modify other web code.
+
+Clean rebuild:
+  make -C build/20261121-core-01/emulator/source -f Makefile.libretro \
+    platform=emscripten HAVE_HDPACK=0 HAVE_NTSC=1 clean
+  bash scripts/build-emulator.sh
+
+Core configuration: upstream mature CPU/PPU/APU/mappers, XRGB8888 preferred with
+RGB565/1555 conversion supported, NTSC filter compiled in, HD packs disabled.
+Static upstream builds normally borrow libretro-common from RetroArch; the build
+links those exact bundled source units directly. Modern emcc requires renaming
+the upstream .bc-named ar archive to .a at final link.
+
+Runtime interface
+
+Local browser module:
+  import { create, browserCodeToRetroKey, JOYPAD } from './cores/fceumm.js';
+  const emulator = await create({ canvas, onFrame, onAudio });
+  emulator.setKeyboardDevice('family'); // none | family | subor
+  emulator.loadRom(new Uint8Array(await response.arrayBuffer()));
+  await emulator.resumeAudio(); // call from a click/key gesture for autoplay
+  emulator.start();
+
+See runtime.d.ts for the complete contract. All operations except create,
+resumeAudio and destroy are synchronous. loadRom throws for invalid/unsupported
+images. getState/getSaveRAM/getSystemRAM return copies; caller owns persistence.
+loadSaveRAM rejects the wrong length. setButton uses zero-based player and
+libretro JOYPAD IDs. setKey uses numeric RETROK values; browserCodeToRetroKey
+accepts physical KeyboardEvent.code (or an event), preserving punctuation and
+left/right modifiers. Canvas and WebAudio work without callbacks. Callbacks are
+optional observers: onFrame receives copied RGBA bytes; onAudio receives copied
+Float32 stereo interleaved PCM. setVolume accepts 0..1. Factory option audio:false
+turns off playback while preserving PCM callbacks. No network/core CDN is used.
+Generated module and WASM resolve beside fceumm.js using import.meta.url. Node
+file-URL tests read the same actual WASM through node:fs/promises.
+
+Input safety: pause/reset/load/snapshot restore/device switching release input.
+The runtime also releases keys on window blur and pauses when document hidden.
+The application's own event routing must call releaseAll when its own input
+capture mode changes. Keyboard connects to expansion port 4: Family 1283,
+Subor 1539. The core polls input_cb(0, RETRO_DEVICE_KEYBOARD, 0, RETROK_*).
+
+Diagnostics and evidence
+
+smoke-test.mjs runs the actual generated WASM, guest CPU bus matrix scanner,
+unmodified MIT KeyTest ROM and available catalog ROMs. It checks deterministic
+PPU state restore, APU sample output, joypad serial ports, input chords/releases,
+keyboard switching, Backquote/Pause/NumLock/keypad Enter, and battery SRAM.
+The small generated matrix scanner is a diagnostic derived from the MIT
+KeyTest ReadKeyboard routine; it is not a game or educational program.
+
+Browser-only harness:
+  node emulator/serve-harness.mjs
+  open http://127.0.0.1:8787/app/xiaoniubawang/ in a browser and click
+  “验证画面、声音、存档与键盘”.
+Evidence JSON is saved beneath build/20261121-core-01/emulator/.
+The harness tests the reverse-proxy subpath without depending on the app UI.
+
+Limits: these checks establish the built core and host runtime paths described
+by their evidence. Original authorized learning-card ROM compatibility remains
+pending until supplied. Physical mobile hardware has not been tested. The
+unmodified upstream KeyTest release tests Family BASIC, while the derived
+13-row scanner supplies explicit Subor matrix assertions. No commercial ROMs
+are included in this source bundle.
+
+Licenses
+
+FCEUmm and the linked standalone frontend/runtime are GPL-2.0-or-later.
+Full upstream Copying is in licenses/FCEUmm-Copying.txt and vendor/fceumm/Copying.
+Keep all upstream per-file notices, including bundled libretro-common notices.
+KeyTest and the derived matrix scanner retain the MIT notice in
+licenses/KeyTest-MIT.txt and diagnostics/keytest/upstream/LICENSE.md.
+The generated runtime also includes Emscripten support code; its license is
+preserved in licenses/Emscripten-LICENSE.txt. Additional unmodified compiler
+licenses remain in the local SDK distribution. KeyTest's tagged source archive
+contains an empty go-nes submodule; the unmodified upstream release ROM is
+preserved and tested as supplied. Our derived diagnostic rebuilds independently
+from the included Python generator and needs no missing submodule.
+Distribute this complete corresponding source and build scripts with the runtime
+binary, preserving these licenses and notices.

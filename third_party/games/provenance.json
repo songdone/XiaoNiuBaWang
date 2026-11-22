@@ -1,0 +1,1041 @@
+{
+  "schemaVersion": 1,
+  "snapshotDate": "2026-11-23",
+  "preparation": "python3 -I scripts/prepare-games.py",
+  "validation": "python3 -I scripts/prepare-games.py --check",
+  "policy": {
+    "romsModified": false,
+    "upstreamCodeExecuted": false,
+    "networkRequired": false,
+    "publicFiles": "Seven ROMs, catalog.json, and required per-game notices only.",
+    "sourceArchives": "Unmodified archives retained only as provenance/source counterparts. Upstream editor executables and artwork remain inside archives; none are extracted into the public game resources or executed.",
+    "screenshots": "Absent until captured from these exact ROMs in the actual runtime.",
+    "keyboardFlag": "false means no Family/Subor learning-keyboard peripheral is required; ordinary host keyboard/gamepad controls remain available.",
+    "runtimeVerification": "Resource validation checks hashes, ZIP CRCs, iNES layout, and interrupt vectors; it does not claim gameplay/audio/core verification or bit-for-bit source rebuilds."
+  },
+  "games": [
+    {
+      "id": "table-tennis",
+      "title": "双人乒乓球 · 8-Bit Table Tennis",
+      "originalTitle": "8-Bit Table Tennis",
+      "version": "1.0",
+      "versionEvidence": null,
+      "system": "NES",
+      "language": {
+        "rom": "en",
+        "label": "英文原版",
+        "metadata": "zh-CN",
+        "translated": false,
+        "evidence": {
+          "archiveMember": "8bit-table-tennis-1.0/screenshot/table_tennis_start_screen.png",
+          "sha256": "7b0edc4067bdad2566f866ca72a77b4af7ceb57ab5bd8c6a2e5f54c3a67b564a",
+          "size": 1528,
+          "purpose": "Pinned v1.0 source screenshot screenshot/table_tennis_start_screen.png reads 8-BIT TABLE TENNIS / PUSH START; source table_tennis.s lines 417-434 stores its title tiles."
+        },
+        "runtimeVerified": false
+      },
+      "projectUrl": "https://github.com/mike42/8bit-table-tennis/tree/v1.0",
+      "source": {
+        "url": "https://codeload.github.com/mike42/8bit-table-tennis/zip/refs/tags/v1.0",
+        "path": "third_party/games/table-tennis/source.zip",
+        "sha256": "284e2b6fb9ac2c4309c897f2153133fdf024440aac15f89bd5910fb86f7d725f",
+        "size": 26476,
+        "tag": "v1.0",
+        "commit": "7dbc27460e01f5d7fa85228ed4c637bfc9fb7b9b",
+        "archiveRoot": "8bit-table-tennis-1.0/",
+        "unmodified": true
+      },
+      "download": {
+        "url": "https://github.com/mike42/8bit-table-tennis/releases/download/v1.0/table_tennis_v1.0.nes",
+        "path": "build/20261121-core-01/downloads/table-tennis/table_tennis_v1.0.nes",
+        "sha256": "05122457672f95fcf2ee518c3f37e506617725c2d031100b1b1c8b7785068ea3",
+        "size": 40976,
+        "payloadMember": null
+      },
+      "rom": {
+        "path": "web/public/games/table-tennis.nes",
+        "sha256": "05122457672f95fcf2ee518c3f37e506617725c2d031100b1b1c8b7785068ea3",
+        "size": 40976,
+        "modified": false,
+        "format": "iNES 1.0",
+        "mapper": 0,
+        "prgBytes": 32768,
+        "chrBytes": 8192,
+        "mirroring": "vertical",
+        "headerHex": "4e45531a020101000000000000000000",
+        "nmiVector": 32856,
+        "resetVector": 32768,
+        "irqVector": 33009
+      },
+      "permission": {
+        "license": "MIT",
+        "scope": "Whole project under MIT; the upstream README credits Brad Smith's NES-ca65-example as its basis.",
+        "sourcePath": "third_party/games/table-tennis/source.zip!8bit-table-tennis-1.0/LICENSE",
+        "publicNotice": {
+          "path": "web/public/games/licenses/table-tennis.txt",
+          "sha256": "0b95be84454b2d197d6b15043351a4e5beb89ec1bb2282bdd1be0893b1e67ff8",
+          "size": 1075
+        },
+        "verbatimMitNotice": true,
+        "manualPath": null,
+        "manualPermissionPages": []
+      },
+      "evidence": [
+        {
+          "archiveMember": "8bit-table-tennis-1.0/LICENSE",
+          "sha256": "0b95be84454b2d197d6b15043351a4e5beb89ec1bb2282bdd1be0893b1e67ff8",
+          "size": 1075,
+          "purpose": "Whole-project MIT license and copyright notice"
+        },
+        {
+          "archiveMember": "8bit-table-tennis-1.0/README.md",
+          "sha256": "0fa9de230ab187cc6d4768cb73f7f25a224a9d3b629ed0922358483fd597114c",
+          "size": 523,
+          "purpose": "Project scope, two-player game, MIT license, and Brad Smith example-code attribution"
+        },
+        {
+          "archiveMember": "8bit-table-tennis-1.0/table_tennis.s",
+          "sha256": "b6083eec9d840e06dba459f4f06d6bb4c24395b801b6bc9c0d12201a55bab654",
+          "size": 21043,
+          "purpose": "START on title; both gamepads use Up/Down and A to serve",
+          "lines": "482-491,585-615,774-856"
+        },
+        {
+          "archiveMember": "8bit-table-tennis-1.0/screenshot/table_tennis_start_screen.png",
+          "sha256": "7b0edc4067bdad2566f866ca72a77b4af7ceb57ab5bd8c6a2e5f54c3a67b564a",
+          "size": 1528,
+          "purpose": "Pinned v1.0 source screenshot screenshot/table_tennis_start_screen.png reads 8-BIT TABLE TENNIS / PUSH START; source table_tennis.s lines 417-434 stores its title tiles."
+        }
+      ],
+      "snapshots": [
+        {
+          "path": "third_party/games/table-tennis/source.zip",
+          "sha256": "284e2b6fb9ac2c4309c897f2153133fdf024440aac15f89bd5910fb86f7d725f",
+          "size": 26476
+        },
+        {
+          "path": "third_party/games/table-tennis/LICENSE.txt",
+          "sha256": "0b95be84454b2d197d6b15043351a4e5beb89ec1bb2282bdd1be0893b1e67ff8",
+          "size": 1075
+        },
+        {
+          "path": "third_party/games/table-tennis/README.upstream.txt",
+          "sha256": "0fa9de230ab187cc6d4768cb73f7f25a224a9d3b629ed0922358483fd597114c",
+          "size": 523
+        }
+      ],
+      "controls": "Enter（START）开始；↑/↓移动 1P 球拍，X（A）发球。2P 使用第二只手柄的上下与 A 键；本作是双人游戏。 键盘：方向键=十字键，X=A，Z=B，Enter=START，右 Shift=SELECT。",
+      "caveats": [
+        "Two-player game; the second player needs a second controller."
+      ]
+    },
+    {
+      "id": "lan-master",
+      "title": "网络大师 · LAN Master",
+      "originalTitle": "LAN Master",
+      "version": "1.09",
+      "versionEvidence": {
+        "version": "1.09",
+        "embeddedText": "Lan Master v1.09 14.06.11",
+        "archiveMember": "lan_master_src/game.asm",
+        "line": 2084,
+        "verifiedInRom": true
+      },
+      "system": "NES",
+      "language": {
+        "rom": "und",
+        "label": "原版未汉化，画面语言待运行核验",
+        "metadata": "zh-CN",
+        "translated": false,
+        "evidence": {
+          "archiveMember": "lan_master_src/title.rle",
+          "sha256": "0918a7ca297a29894791648da2aff7b4eb55ef8f2950107837ea808d117f929c",
+          "size": 211,
+          "purpose": "The original unmodified ROM and official English/Russian manual are preserved. Game text uses CHR/RLE tiles; manual language is not treated as proof of the ROM screen language."
+        },
+        "runtimeVerified": false
+      },
+      "projectUrl": "https://shiru.untergrund.net/files/nes/lan_master.zip",
+      "source": {
+        "url": "https://shiru.untergrund.net/files/src/lan_master_src.zip",
+        "path": "third_party/games/lan-master/source.zip",
+        "sha256": "d4058bd0f6d31fbd9ba71b2ec15e9646f00520de075c9c18f8520e8d18e0b3ee",
+        "size": 85742,
+        "tag": null,
+        "commit": null,
+        "archiveRoot": "lan_master_src/",
+        "unmodified": true
+      },
+      "download": {
+        "url": "https://shiru.untergrund.net/files/nes/lan_master.zip",
+        "path": "build/20261121-core-01/downloads/lan-master/lan_master.zip",
+        "sha256": "79410cc133f1100d2fe5409fd49297a62afc748aeeb5faccb8fe69c68c16e6aa",
+        "size": 1126553,
+        "payloadMember": "lan_master/Lan_Master.nes"
+      },
+      "rom": {
+        "path": "web/public/games/lan-master.nes",
+        "sha256": "becfeafb80479c330333c9e9385417f68f3c88e85443dfb37b05ae9283f3ea45",
+        "size": 40976,
+        "modified": false,
+        "format": "iNES 1.0",
+        "mapper": 0,
+        "prgBytes": 32768,
+        "chrBytes": 8192,
+        "mirroring": "vertical",
+        "headerHex": "4e45531a020101000000000000000000",
+        "nmiVector": 250,
+        "resetVector": 32768,
+        "irqVector": 0
+      },
+      "permission": {
+        "license": "Public Domain",
+        "scope": "Shiru declares the whole game and its source code Public Domain in game.asm line 4; the official manual independently declares the game Public Domain and credits Shiru for code, graphics, and music.",
+        "sourcePath": "third_party/games/lan-master/source.zip!lan_master_src/game.asm:4",
+        "publicNotice": {
+          "path": "web/public/games/licenses/lan-master.txt",
+          "sha256": "1be38d4da6de54ee13abc7164ed9bbbdb8b3ae3c6125f905f6bf63483600bec9",
+          "size": 857
+        },
+        "verbatimMitNotice": false,
+        "manualPath": "third_party/games/lan-master/manual.pdf",
+        "manualPermissionPages": [
+          1,
+          2,
+          4
+        ]
+      },
+      "evidence": [
+        {
+          "archiveMember": "lan_master_src/game.asm",
+          "sha256": "57289495da3fb5a8ce6a244064f8baf3cc6e6dfd5b25a57e98727319846fd73b",
+          "size": 30123,
+          "purpose": "Whole game and source public-domain declaration",
+          "lines": "1-4"
+        },
+        {
+          "archiveMember": "lan_master_src/game.asm",
+          "sha256": "57289495da3fb5a8ce6a244064f8baf3cc6e6dfd5b25a57e98727319846fd73b",
+          "size": 30123,
+          "purpose": "START pause, A/B quarter rotations, SELECT half-turn, D-pad cursor",
+          "lines": "825-905"
+        },
+        {
+          "archiveMember": "lan_master_src/mainmenu.asm",
+          "sha256": "554821dfe9d62b10b787cb29664fae9af0675bc72da90675a6ff96ae40b50674",
+          "size": 8279,
+          "purpose": "A/B/START menu confirmation and code entry",
+          "lines": "35-57,370-390"
+        },
+        {
+          "archiveMember": "lan_master_src/title.rle",
+          "sha256": "0918a7ca297a29894791648da2aff7b4eb55ef8f2950107837ea808d117f929c",
+          "size": 211,
+          "purpose": "The original unmodified ROM and official English/Russian manual are preserved. Game text uses CHR/RLE tiles; manual language is not treated as proof of the ROM screen language."
+        }
+      ],
+      "snapshots": [
+        {
+          "path": "third_party/games/lan-master/source.zip",
+          "sha256": "d4058bd0f6d31fbd9ba71b2ec15e9646f00520de075c9c18f8520e8d18e0b3ee",
+          "size": 85742
+        },
+        {
+          "path": "third_party/games/lan-master/manual.pdf",
+          "sha256": "5d47e2e28e768de7d11ab50abb5bdbf909449032f74e994c90a67361d0c53a42",
+          "size": 96491
+        },
+        {
+          "path": "third_party/games/lan-master/notes.upstream.txt",
+          "sha256": "f0634fc616686427878ae9169c2234a4c12281fc349c2d4b8bf2373b06c8d6fe",
+          "size": 2528
+        },
+        {
+          "path": "third_party/games/lan-master/LICENSE.txt",
+          "sha256": "1be38d4da6de54ee13abc7164ed9bbbdb8b3ae3c6125f905f6bf63483600bec9",
+          "size": 857
+        }
+      ],
+      "controls": "方向键移动光标；X（A）与 Z（B）向相反方向旋转，右 Shift（SELECT）转半圈；Enter（START）确认或打开暂停菜单。记录通关密码，在主菜单 CODE 输入可续关。 键盘：方向键=十字键，X=A，Z=B，Enter=START，右 Shift=SELECT。",
+      "caveats": [
+        "Official downloads have no version tag. These exact archive and ROM bytes are pinned by SHA-256.",
+        "The official development notes mention a 2015 pause fix; version 1.09 is independently verified in the source and the ROM's embedded text.",
+        "Gameplay is inspired by NetWalk; the official notes credit Shiru's own graphics and music."
+      ]
+    },
+    {
+      "id": "lawn-mower",
+      "title": "欢乐割草 · Lawn Mower",
+      "originalTitle": "Lawn Mower",
+      "version": "1.12",
+      "versionEvidence": {
+        "version": "1.12",
+        "embeddedText": "Lawn Mower v1.12 01.07.11",
+        "archiveMember": "lawn_mower_src/game.asm",
+        "line": 2498,
+        "verifiedInRom": true
+      },
+      "system": "NES",
+      "language": {
+        "rom": "und",
+        "label": "原版未汉化，画面语言待运行核验",
+        "metadata": "zh-CN",
+        "translated": false,
+        "evidence": {
+          "archiveMember": "lawn_mower_src/title.rle",
+          "sha256": "485877bf5d824d667ddbe362b3de56577e792495d0b109dc2c6cdef61d3e5eff",
+          "size": 781,
+          "purpose": "The original unmodified ROM and official English/Russian manual are preserved. Game text uses CHR/RLE tiles; manual language is not treated as proof of the ROM screen language."
+        },
+        "runtimeVerified": false
+      },
+      "projectUrl": "https://shiru.untergrund.net/files/nes/lawn_mower.zip",
+      "source": {
+        "url": "https://shiru.untergrund.net/files/src/lawn_mower_src.zip",
+        "path": "third_party/games/lawn-mower/source.zip",
+        "sha256": "8986e2057ad0ef3ccc2ab8bb39c9c54819ff402980b3468efde89da15a5d9dd5",
+        "size": 263681,
+        "tag": null,
+        "commit": null,
+        "archiveRoot": "lawn_mower_src/",
+        "unmodified": true
+      },
+      "download": {
+        "url": "https://shiru.untergrund.net/files/nes/lawn_mower.zip",
+        "path": "build/20261121-core-01/downloads/lawn-mower/lawn_mower.zip",
+        "sha256": "af7378b522a7d11efd0306aebf15c193a2de31f5a7b130919699d4f1e7219f70",
+        "size": 751619,
+        "payloadMember": "Lawn_Mower.nes"
+      },
+      "rom": {
+        "path": "web/public/games/lawn-mower.nes",
+        "sha256": "181ef3ff1769a85ae98736e02809e65e5d758b453ebb43ec4b9fe60c93ad224c",
+        "size": 24592,
+        "modified": false,
+        "format": "iNES 1.0",
+        "mapper": 0,
+        "prgBytes": 16384,
+        "chrBytes": 8192,
+        "mirroring": "vertical",
+        "headerHex": "4e45531a010101000000000000000000",
+        "nmiVector": 52854,
+        "resetVector": 49152,
+        "irqVector": 0
+      },
+      "permission": {
+        "license": "Public Domain",
+        "scope": "Shiru declares the whole game and its source code Public Domain in game.asm line 4; the official manual independently declares the game Public Domain and credits Shiru for code, graphics, and music.",
+        "sourcePath": "third_party/games/lawn-mower/source.zip!lawn_mower_src/game.asm:4",
+        "publicNotice": {
+          "path": "web/public/games/licenses/lawn-mower.txt",
+          "sha256": "46a834f4dc6d17f578d244c8bc7e5d335fce7db8aa94d5dff5a499e1ab99121b",
+          "size": 846
+        },
+        "verbatimMitNotice": false,
+        "manualPath": "third_party/games/lawn-mower/manual.pdf",
+        "manualPermissionPages": [
+          1,
+          2,
+          4
+        ]
+      },
+      "evidence": [
+        {
+          "archiveMember": "lawn_mower_src/game.asm",
+          "sha256": "fbc9678a1192fb79d3210a5041169867dbd95bf7e49dd21b87efa4ed4fe2f997",
+          "size": 39420,
+          "purpose": "Whole game and source public-domain declaration",
+          "lines": "1-4"
+        },
+        {
+          "archiveMember": "lawn_mower_src/game.asm",
+          "sha256": "fbc9678a1192fb79d3210a5041169867dbd95bf7e49dd21b87efa4ed4fe2f997",
+          "size": 39420,
+          "purpose": "D-pad steering, hold A/B to accelerate, START pause",
+          "lines": "650-760"
+        },
+        {
+          "archiveMember": "lawn_mower_src/title.asm",
+          "sha256": "d4f031e311186f026051c3888c5e58a58176dec88846807a9b8392e43cd01d02",
+          "size": 4474,
+          "purpose": "START begins play",
+          "lines": "229-234"
+        },
+        {
+          "archiveMember": "lawn_mower_src/title.rle",
+          "sha256": "485877bf5d824d667ddbe362b3de56577e792495d0b109dc2c6cdef61d3e5eff",
+          "size": 781,
+          "purpose": "The original unmodified ROM and official English/Russian manual are preserved. Game text uses CHR/RLE tiles; manual language is not treated as proof of the ROM screen language."
+        }
+      ],
+      "snapshots": [
+        {
+          "path": "third_party/games/lawn-mower/source.zip",
+          "sha256": "8986e2057ad0ef3ccc2ab8bb39c9c54819ff402980b3468efde89da15a5d9dd5",
+          "size": 263681
+        },
+        {
+          "path": "third_party/games/lawn-mower/manual.pdf",
+          "sha256": "9d321ce8d0fcb804375b0c21a7a12a32bfd291ee8978254ab0a4cd3f44c996aa",
+          "size": 92476
+        },
+        {
+          "path": "third_party/games/lawn-mower/notes.upstream.txt",
+          "sha256": "f6b90fa508faafce1e4e02d16462987bd4e68902843e8a42d611fdac6ac9c0ed",
+          "size": 3338
+        },
+        {
+          "path": "third_party/games/lawn-mower/LICENSE.txt",
+          "sha256": "46a834f4dc6d17f578d244c8bc7e5d335fce7db8aa94d5dff5a499e1ab99121b",
+          "size": 846
+        }
+      ],
+      "controls": "Enter（START）开始或暂停；方向键改变行进方向；按住 X（A）或 Z（B）加速。割草机持续移动；收集油罐补充燃料，穿过花丛和石块会额外耗油。 键盘：方向键=十字键，X=A，Z=B，Enter=START，右 Shift=SELECT。",
+      "caveats": [
+        "Official downloads have no version tag. These exact archive and ROM bytes are pinned by SHA-256.",
+        "The official notes describe inspiration from older lawn-mower games and palette differences between emulators."
+      ]
+    },
+    {
+      "id": "void-lancer",
+      "title": "虚空枪骑兵 · VOID LANCER",
+      "originalTitle": "VOID LANCER",
+      "version": "1.0.0",
+      "versionEvidence": null,
+      "system": "NES",
+      "language": {
+        "rom": "en",
+        "label": "英文原版",
+        "metadata": "zh-CN",
+        "translated": false,
+        "evidence": {
+          "archiveMember": "void-lancer-nes-1.0.0/tools/gen_assets.py",
+          "sha256": "2482b382925841e5ebeee305ea26e999335b2e7770c0761fd2e0c7b87060b2bc",
+          "size": 45967,
+          "purpose": "tools/gen_assets.py lines 958-970 writes English ROM nametable text: MISSION COMPLETE, RETRY THE VOID, PRESS START, FINAL SCORE. This is source evidence, not a claim of runtime capture."
+        },
+        "runtimeVerified": false
+      },
+      "projectUrl": "https://github.com/Riyoway/void-lancer-nes/tree/v1.0.0",
+      "source": {
+        "url": "https://codeload.github.com/Riyoway/void-lancer-nes/zip/refs/tags/v1.0.0",
+        "path": "third_party/games/void-lancer/source.zip",
+        "sha256": "e7df30c2cd48a7008418c98840161d4d5ca168cddf50c4eb6b1c307f56786b04",
+        "size": 107080,
+        "tag": "v1.0.0",
+        "commit": "3eb87532f11d30dba2b7a8e3832a52213ab6b62b",
+        "archiveRoot": "void-lancer-nes-1.0.0/",
+        "unmodified": true
+      },
+      "download": {
+        "url": "https://github.com/Riyoway/void-lancer-nes/releases/download/v1.0.0/VOID-LANCER-v1.0.0.nes",
+        "path": "build/20261121-core-01/downloads/void-lancer/VOID-LANCER-v1.0.0.nes",
+        "sha256": "5eb801aca68131a3d17fa82d8901d46f6098b878d1e00cd1c47d00c001c2405a",
+        "size": 40976,
+        "payloadMember": null
+      },
+      "rom": {
+        "path": "web/public/games/void-lancer.nes",
+        "sha256": "5eb801aca68131a3d17fa82d8901d46f6098b878d1e00cd1c47d00c001c2405a",
+        "size": 40976,
+        "modified": false,
+        "format": "iNES 1.0",
+        "mapper": 0,
+        "prgBytes": 32768,
+        "chrBytes": 8192,
+        "mirroring": "vertical",
+        "headerHex": "4e45531a020101000000000000000000",
+        "nmiVector": 32918,
+        "resetVector": 32768,
+        "irqVector": 32973
+      },
+      "permission": {
+        "license": "MIT",
+        "scope": "MIT for the project, including its original graphics and synthesized soundtrack. README and docs/SOUNDTRACK.md explicitly document originality. External historical references are excluded by the upstream license note and are not bundled as game assets.",
+        "sourcePath": "third_party/games/void-lancer/source.zip!void-lancer-nes-1.0.0/LICENSE",
+        "publicNotice": {
+          "path": "web/public/games/licenses/void-lancer.txt",
+          "sha256": "1df414a4dfdb4cadd46797b21c8a1455d3c37b040277ec6213cf5fc0ae123d1a",
+          "size": 1081
+        },
+        "verbatimMitNotice": true,
+        "manualPath": null,
+        "manualPermissionPages": []
+      },
+      "evidence": [
+        {
+          "archiveMember": "void-lancer-nes-1.0.0/LICENSE",
+          "sha256": "1df414a4dfdb4cadd46797b21c8a1455d3c37b040277ec6213cf5fc0ae123d1a",
+          "size": 1081,
+          "purpose": "Whole-project MIT license and copyright notice"
+        },
+        {
+          "archiveMember": "void-lancer-nes-1.0.0/README.md",
+          "sha256": "d76376a92b7e9f95bdbfcc6ba19aa2f4dc695aa8fef84d46504d3257af5547fd",
+          "size": 6921,
+          "purpose": "Original art/code/music policy, controls, three lives and three bombs"
+        },
+        {
+          "archiveMember": "void-lancer-nes-1.0.0/docs/SOUNDTRACK.md",
+          "sha256": "c7feb301efdb4bd57918538a6016ce40f1fe620e75e5306751e1fa19b2bd0b9c",
+          "size": 2647,
+          "purpose": "Original six-track 2A03 soundtrack; no commercial melodies or samples"
+        },
+        {
+          "archiveMember": "void-lancer-nes-1.0.0/tools/gen_assets.py",
+          "sha256": "2482b382925841e5ebeee305ea26e999335b2e7770c0761fd2e0c7b87060b2bc",
+          "size": 45967,
+          "purpose": "tools/gen_assets.py lines 958-970 writes English ROM nametable text: MISSION COMPLETE, RETRY THE VOID, PRESS START, FINAL SCORE. This is source evidence, not a claim of runtime capture."
+        }
+      ],
+      "snapshots": [
+        {
+          "path": "third_party/games/void-lancer/source.zip",
+          "sha256": "e7df30c2cd48a7008418c98840161d4d5ca168cddf50c4eb6b1c307f56786b04",
+          "size": 107080
+        },
+        {
+          "path": "third_party/games/void-lancer/LICENSE.txt",
+          "sha256": "1df414a4dfdb4cadd46797b21c8a1455d3c37b040277ec6213cf5fc0ae123d1a",
+          "size": 1081
+        },
+        {
+          "path": "third_party/games/void-lancer/README.upstream.txt",
+          "sha256": "d76376a92b7e9f95bdbfcc6ba19aa2f4dc695aa8fef84d46504d3257af5547fd",
+          "size": 6921
+        },
+        {
+          "path": "third_party/games/void-lancer/SOUNDTRACK.upstream.txt",
+          "sha256": "c7feb301efdb4bd57918538a6016ce40f1fe620e75e5306751e1fa19b2bd0b9c",
+          "size": 2647
+        }
+      ],
+      "controls": "Enter（START）开始或重新开始；方向键移动；X（A）射击；Z（B）使用脉冲炸弹。初始拥有 3 条生命与 3 枚炸弹。 键盘：方向键=十字键，X=A，Z=B，Enter=START，右 Shift=SELECT。",
+      "caveats": [
+        "Upstream targets NTSC; its own control-flow smoke test is not a cycle-accurate PPU/APU test."
+      ]
+    },
+    {
+      "id": "cargo-shift",
+      "title": "仓库推箱 · Cargo Shift",
+      "originalTitle": "Cargo Shift",
+      "version": "0.1.0",
+      "versionEvidence": null,
+      "system": "NES",
+      "language": {
+        "rom": "en",
+        "label": "英文原版",
+        "metadata": "zh-CN",
+        "translated": false,
+        "evidence": {
+          "archiveMember": "cargo-shift-0.1.0/tools/build_graphics.py",
+          "sha256": "4a20b6fc7fe68bca0b471ce8b177d9f22ef0fe546f3037fff2288255aba56b8e",
+          "size": 6965,
+          "purpose": "tools/build_graphics.py lines 131 and 162-164 writes PRESS START, PAUSE, CONTINUE, RETRY, TITLE, and RETRY STAGE? into the ROM scene data. The Chinese README does not imply Chinese ROM text."
+        },
+        "runtimeVerified": false
+      },
+      "projectUrl": "https://github.com/Hxyspace/cargo-shift/tree/v0.1.0",
+      "source": {
+        "url": "https://codeload.github.com/Hxyspace/cargo-shift/zip/refs/tags/v0.1.0",
+        "path": "third_party/games/cargo-shift/source.zip",
+        "sha256": "21053e7af03c5eb0e732eb21086e325340e2e82accd2c9ee3f5dce51a396521c",
+        "size": 87574,
+        "tag": "v0.1.0",
+        "commit": "6bd3b0a92213914e09f744c76308f5e9d569ce00",
+        "archiveRoot": "cargo-shift-0.1.0/",
+        "unmodified": true
+      },
+      "download": {
+        "url": "https://github.com/Hxyspace/cargo-shift/releases/download/v0.1.0/cargo_shift.nes",
+        "path": "build/20261121-core-01/downloads/cargo-shift/cargo_shift.nes",
+        "sha256": "d1a6deb7528d5349b69b02fe918fba8fa9e7fdfbd5d8be455d6b9d173d7545ef",
+        "size": 40976,
+        "payloadMember": null
+      },
+      "rom": {
+        "path": "web/public/games/cargo-shift.nes",
+        "sha256": "d1a6deb7528d5349b69b02fe918fba8fa9e7fdfbd5d8be455d6b9d173d7545ef",
+        "size": 40976,
+        "modified": false,
+        "format": "iNES 1.0",
+        "mapper": 0,
+        "prgBytes": 32768,
+        "chrBytes": 8192,
+        "mirroring": "horizontal",
+        "headerHex": "4e45531a020100000000000000000000",
+        "nmiVector": 32865,
+        "resetVector": 32768,
+        "irqVector": 32943
+      },
+      "permission": {
+        "license": "MIT",
+        "scope": "Whole project under MIT. Original sprites and levels are present in the tagged source; docs/LEVELS.md declares original levels and retains its design-inspiration credit. Effects are synthesized through NES APU register writes in src/common/nes.c.",
+        "sourcePath": "third_party/games/cargo-shift/source.zip!cargo-shift-0.1.0/LICENSE",
+        "publicNotice": {
+          "path": "web/public/games/licenses/cargo-shift.txt",
+          "sha256": "41fb091edc0c8f4586deea341f52de36d657c14d262c9a2ae9887f2e883f5040",
+          "size": 1081
+        },
+        "verbatimMitNotice": true,
+        "manualPath": null,
+        "manualPermissionPages": []
+      },
+      "evidence": [
+        {
+          "archiveMember": "cargo-shift-0.1.0/LICENSE",
+          "sha256": "41fb091edc0c8f4586deea341f52de36d657c14d262c9a2ae9887f2e883f5040",
+          "size": 1081,
+          "purpose": "Whole-project MIT license and copyright notice"
+        },
+        {
+          "archiveMember": "cargo-shift-0.1.0/README.md",
+          "sha256": "a5204e9e070677ffc5a266147d9614fafb1a7cb3c6eee36d3ac386e75d7c85a2",
+          "size": 2343,
+          "purpose": "18 original levels, MIT license, release ROM SHA-256 and hardware limits"
+        },
+        {
+          "archiveMember": "cargo-shift-0.1.0/docs/LEVELS.md",
+          "sha256": "acd2dfe22594c23443980de3114fc53e0956295a2b9be802dd37649ef7677e16",
+          "size": 3565,
+          "purpose": "Original level-design declaration and retained inspiration attribution",
+          "lines": "1-11"
+        },
+        {
+          "archiveMember": "cargo-shift-0.1.0/src/cargo_shift/main.c",
+          "sha256": "c66fa1c3571875f6a5eef44bae09b50ad5b58d68d01893e13b7513db395cdcff",
+          "size": 7445,
+          "purpose": "START title/pause, B undo, A retry confirmation, menu controls",
+          "lines": "85-201"
+        },
+        {
+          "archiveMember": "cargo-shift-0.1.0/src/common/nes.c",
+          "sha256": "cabd929d4325a1fba2c0a0d766165803a87d45363882bdcb0392a724b8ea6402",
+          "size": 5514,
+          "purpose": "Synthesized APU effects; direct pulse-channel register writes",
+          "lines": "151-165"
+        },
+        {
+          "archiveMember": "cargo-shift-0.1.0/assets/cargo_shift/sprites.png",
+          "sha256": "948529b0e85eac77563c30e69f8f68b6d9f1633f0531e483c54abd769416c98b",
+          "size": 1168,
+          "purpose": "Project sprite source, covered by repository MIT license"
+        },
+        {
+          "archiveMember": "cargo-shift-0.1.0/assets/cargo_shift/levels.json",
+          "sha256": "2f261546e13d2973926c25b9f7cf045a91cf9a4a4f7974d497501cf3aa10dc08",
+          "size": 6980,
+          "purpose": "Project level data, covered by repository MIT license"
+        },
+        {
+          "archiveMember": "cargo-shift-0.1.0/tools/build_graphics.py",
+          "sha256": "4a20b6fc7fe68bca0b471ce8b177d9f22ef0fe546f3037fff2288255aba56b8e",
+          "size": 6965,
+          "purpose": "tools/build_graphics.py lines 131 and 162-164 writes PRESS START, PAUSE, CONTINUE, RETRY, TITLE, and RETRY STAGE? into the ROM scene data. The Chinese README does not imply Chinese ROM text."
+        }
+      ],
+      "snapshots": [
+        {
+          "path": "third_party/games/cargo-shift/source.zip",
+          "sha256": "21053e7af03c5eb0e732eb21086e325340e2e82accd2c9ee3f5dce51a396521c",
+          "size": 87574
+        },
+        {
+          "path": "third_party/games/cargo-shift/LICENSE.txt",
+          "sha256": "41fb091edc0c8f4586deea341f52de36d657c14d262c9a2ae9887f2e883f5040",
+          "size": 1081
+        },
+        {
+          "path": "third_party/games/cargo-shift/README.upstream.txt",
+          "sha256": "a5204e9e070677ffc5a266147d9614fafb1a7cb3c6eee36d3ac386e75d7c85a2",
+          "size": 2343
+        },
+        {
+          "path": "third_party/games/cargo-shift/LEVELS.upstream.txt",
+          "sha256": "acd2dfe22594c23443980de3114fc53e0956295a2b9be802dd37649ef7677e16",
+          "size": 3565
+        }
+      ],
+      "controls": "Enter（START）开始或打开暂停菜单；方向键移动并推箱；Z（B）撤销；X（A）打开重开确认。菜单用 ↑/↓ 或右 Shift（SELECT）切换，Enter 确认，Z 返回。 键盘：方向键=十字键，X=A，Z=B，Enter=START，右 Shift=SELECT。",
+      "caveats": [
+        "NTSC target; PAL is explicitly unverified upstream. No in-game battery save.",
+        "Upstream README independently publishes the exact bundled ROM SHA-256."
+      ]
+    },
+    {
+      "id": "thwaite",
+      "title": "烟花守卫 · Thwaite",
+      "originalTitle": "Thwaite",
+      "version": "0.04",
+      "versionEvidence": null,
+      "system": "NES",
+      "language": {
+        "rom": "en",
+        "label": "英文原版",
+        "metadata": "zh-CN",
+        "translated": false,
+        "evidence": {
+          "archiveMember": "thwaite-nes-0.04/src/texts.txt",
+          "sha256": "5c6020e040dd541e799bef28df875a1871f4facdb91e89e21acb069e32d09f4f",
+          "size": 561,
+          "purpose": "Fixed-tag src/texts.txt includes Thwaite 0.04, practice menu, warranty notice and Press Start Button; these exact English source texts are retained without translating the ROM."
+        },
+        "runtimeVerified": false
+      },
+      "projectUrl": "https://github.com/pinobatch/thwaite-nes/tree/v0.04",
+      "source": {
+        "url": "https://codeload.github.com/pinobatch/thwaite-nes/zip/refs/tags/v0.04",
+        "path": "third_party/games/thwaite/source.zip",
+        "sha256": "222f392b417185435f447ae5f17a2461d9bdd82c8b9a8e0d263ce6a97a911173",
+        "size": 142346,
+        "tag": "v0.04",
+        "commit": "ccd27ccbe3e201755b86c1b5f932b2e11ba74110",
+        "archiveRoot": "thwaite-nes-0.04/",
+        "unmodified": true
+      },
+      "download": {
+        "url": "https://github.com/pinobatch/thwaite-nes/releases/download/v0.04/thwaite.nes",
+        "path": "build/20261123-games-01/download/thwaite-rom/thwaite.nes",
+        "sha256": "a2df24d9c9f72e56c2fdc4c703becc47a5700ad0158da8208247635ebeb3779c",
+        "size": 24592,
+        "payloadMember": null
+      },
+      "rom": {
+        "path": "web/public/games/thwaite.nes",
+        "sha256": "a2df24d9c9f72e56c2fdc4c703becc47a5700ad0158da8208247635ebeb3779c",
+        "size": 24592,
+        "modified": false,
+        "format": "iNES 1.0",
+        "mapper": 0,
+        "prgBytes": 16384,
+        "chrBytes": 8192,
+        "mirroring": "vertical",
+        "headerHex": "4e45531a010101000000000000000000",
+        "nmiVector": 52289,
+        "resetVector": 52292,
+        "irqVector": 52288
+      },
+      "permission": {
+        "license": "GPL-3.0-or-later",
+        "scope": "The tagged README and USAGE.html license the accompanying whole game GPL version 3 or later and credit Damian Yerrick for program, graphics and music, with extra music credited to Ludwig van Beethoven. The full GPL and unmodified corresponding tagged source, including build scripts, graphics and music data, are bundled. No source-free ROM exception is claimed for Thwaite.",
+        "sourcePath": "third_party/games/thwaite/source.zip!thwaite-nes-0.04/README.md",
+        "publicNotice": {
+          "path": "web/public/games/licenses/thwaite.txt",
+          "sha256": "db6640e70f7b72fa029732f485e7fa32c571549f3eef177e524d2585761528cf",
+          "size": 38143
+        },
+        "verbatimMitNotice": false,
+        "manualPath": null,
+        "manualPermissionPages": [],
+        "verbatimWholeProgramGrant": "This program is free software: you can redistribute it and/or modify\nit under the terms of the GNU General Public License as published by\nthe Free Software Foundation, either version 3 of the License, or\n(at your option) any later version.",
+        "credits": {
+          "program": [
+            "Damian Yerrick"
+          ],
+          "graphics": [
+            "Damian Yerrick"
+          ],
+          "music": [
+            "Damian Yerrick",
+            "Ludwig van Beethoven (extra music)"
+          ]
+        },
+        "completeGplNotice": true,
+        "correspondingSourceIncluded": true,
+        "sourceIncludesBuildArtMusic": true,
+        "exactPublishedRomException": null,
+        "sourceFreeDistributionClaimed": false
+      },
+      "evidence": [
+        {
+          "archiveMember": "thwaite-nes-0.04/LICENSE.txt",
+          "sha256": "589ed823e9a84c56feb95ac58e7cf384626b9cbf4fda2a907bc36e103de1bad2",
+          "size": 35141,
+          "purpose": "Complete upstream GPL version 3 license"
+        },
+        {
+          "archiveMember": "thwaite-nes-0.04/README.md",
+          "sha256": "6df74e5d438126957b98b5519f0ef9824f0890ca4c6e1a474967e12f23af6239",
+          "size": 2350,
+          "purpose": "Whole-program GPL-3.0-or-later grant, program/graphics/music credits, build requirements and flicker warning",
+          "lines": "17-50"
+        },
+        {
+          "archiveMember": "thwaite-nes-0.04/USAGE.html",
+          "sha256": "b3257e0624e8a496b757e643b3471f2ec07532d046fad04e5deacba2f8251b2c",
+          "size": 9132,
+          "purpose": "Official gamepad controls, modes and manual permission/credits",
+          "lines": "48-110"
+        },
+        {
+          "archiveMember": "thwaite-nes-0.04/makefile",
+          "sha256": "e0044aa7dc2b82b6938be97e6653a7f5d9bda80d8531e545296e2f1d8836a31d",
+          "size": 3552,
+          "purpose": "Tagged build scripts and both NROM-128/NROM-256 targets retained; published ROM is NROM-128",
+          "lines": "12-18,101-108"
+        },
+        {
+          "archiveMember": "thwaite-nes-0.04/src/nrom128.s",
+          "sha256": "aa2f0cce9cc712bded684fa47bec54da7c5158da6577106baa1fd26b8a9ef721",
+          "size": 275,
+          "purpose": "Source for exact 16 KiB PRG / 8 KiB CHR mapper-0 header",
+          "lines": "1-8"
+        },
+        {
+          "archiveMember": "thwaite-nes-0.04/src/main.s",
+          "sha256": "2625d6fff11448911e0730fcf90ede96202973d3961e11b997232fd26a0f0883",
+          "size": 14321,
+          "purpose": "Program GPL notice and gamepad firing logic",
+          "lines": "1-21,458-491"
+        },
+        {
+          "archiveMember": "thwaite-nes-0.04/src/musicseq.s",
+          "sha256": "181ef4b26f926e89b904681378a1e6f742d575c99faeb6f8e3b13c7a2b3ac81e",
+          "size": 10940,
+          "purpose": "Damian Yerrick music data notice and Beethoven Pathetique melody attribution; synthesized note data, not a commercial recording",
+          "lines": "1-11,155-157,308-312"
+        },
+        {
+          "archiveMember": "thwaite-nes-0.04/tilesets/maingfx.png",
+          "sha256": "60e7d4f19d34afedd51d46c32e21060bf37f64a69146ad2d673ad0d679f083b5",
+          "size": 3106,
+          "purpose": "Tagged main graphics source retained in complete source archive"
+        },
+        {
+          "archiveMember": "thwaite-nes-0.04/tilesets/cuthouses.png",
+          "sha256": "370e6c76a84ead95c29eb684da62a31bfe47a6bb47d9cb7b400a529db90a0c1c",
+          "size": 1074,
+          "purpose": "Tagged cutscene graphics source retained in complete source archive"
+        },
+        {
+          "archiveMember": "thwaite-nes-0.04/src/texts.txt",
+          "sha256": "5c6020e040dd541e799bef28df875a1871f4facdb91e89e21acb069e32d09f4f",
+          "size": 561,
+          "purpose": "Fixed-tag src/texts.txt includes Thwaite 0.04, practice menu, warranty notice and Press Start Button; these exact English source texts are retained without translating the ROM."
+        }
+      ],
+      "snapshots": [
+        {
+          "path": "third_party/games/thwaite/source.zip",
+          "sha256": "222f392b417185435f447ae5f17a2461d9bdd82c8b9a8e0d263ce6a97a911173",
+          "size": 142346
+        },
+        {
+          "path": "third_party/games/thwaite/LICENSE.txt",
+          "sha256": "589ed823e9a84c56feb95ac58e7cf384626b9cbf4fda2a907bc36e103de1bad2",
+          "size": 35141
+        },
+        {
+          "path": "third_party/games/thwaite/README.upstream.txt",
+          "sha256": "6df74e5d438126957b98b5519f0ef9824f0890ca4c6e1a474967e12f23af6239",
+          "size": 2350
+        },
+        {
+          "path": "third_party/games/thwaite/USAGE.upstream.txt",
+          "sha256": "b3257e0624e8a496b757e643b3471f2ec07532d046fad04e5deacba2f8251b2c",
+          "size": 9132
+        },
+        {
+          "path": "third_party/games/thwaite/makefile.upstream.txt",
+          "sha256": "e0044aa7dc2b82b6938be97e6653a7f5d9bda80d8531e545296e2f1d8836a31d",
+          "size": 3552
+        },
+        {
+          "path": "third_party/games/thwaite/musicseq.upstream.txt",
+          "sha256": "181ef4b26f926e89b904681378a1e6f742d575c99faeb6f8e3b13c7a2b3ac81e",
+          "size": 10940
+        }
+      ],
+      "controls": "Enter（START）跳过声明、确认菜单或暂停；↑/↓选择模式。单人用方向键移动准星，Z（B）从左井发射，X（A）从右井发射。双人合作需要两只手柄，各自 A/B 均从对应发射井发射。练习中暂停后右 Shift（SELECT）结束练习。 键盘：方向键=十字键，X=A，Z=B，Enter=START，右 Shift=SELECT。",
+      "caveats": [
+        "Official v0.04 release asset thwaite.nes is NROM-128, despite the tagged makefile naming its NROM-256 target thwaite.nes; the original release bytes and complete tag are retained, without claiming a bit-identical rebuild.",
+        "Graphics flicker; preserve the upstream photosensitive-seizure warning. SNES Mouse support is upstream functionality, not a claim of this application's mouse support.",
+        "Source credits historical concept/setting and musical rhythm inspiration; these references are not distributed as third-party ROMs, artwork or sampled audio. The exact whole-program GPL grant, not a blanket originality claim, is the distribution basis."
+      ]
+    },
+    {
+      "id": "croom",
+      "title": "记忆翻牌 · Concentration Room",
+      "originalTitle": "Concentration Room",
+      "version": "0.02a",
+      "versionEvidence": null,
+      "system": "NES",
+      "language": {
+        "rom": "en",
+        "label": "英文原版",
+        "metadata": "zh-CN",
+        "translated": false,
+        "evidence": {
+          "archiveMember": "croom-nes-0.02a/src/litetitle.s",
+          "sha256": "e009475eba40140e717542567a0d511d3a0dbb4f21e0e67101d1110777ea4015",
+          "size": 14924,
+          "purpose": "Fixed-tag src/litetitle.s embeds English instructions, menus and program/graphics credits, including Flip two cards and Graphics by Damian Yerrick and Sara Crickard; no ROM translation."
+        },
+        "runtimeVerified": false
+      },
+      "projectUrl": "https://github.com/pinobatch/croom-nes/tree/v0.02a",
+      "source": {
+        "url": "https://codeload.github.com/pinobatch/croom-nes/zip/refs/tags/v0.02a",
+        "path": "third_party/games/croom/source.zip",
+        "sha256": "b83fe31dd5ece865215a4d3b4fb48cf673d0990f162edac52ff21bdd7c327e9f",
+        "size": 91087,
+        "tag": "v0.02a",
+        "commit": "209e628564ab890d05c188e7c84f80217088aa5a",
+        "archiveRoot": "croom-nes-0.02a/",
+        "unmodified": true
+      },
+      "download": {
+        "url": "https://github.com/pinobatch/croom-nes/releases/download/v0.02a/croom.nes",
+        "path": "build/20261123-games-01/download/croom-rom/croom.nes",
+        "sha256": "2ce17df1ad66a8a0533c0a8739f5b5ebe275c264924bbe350c42c5ac0394f20e",
+        "size": 24592,
+        "payloadMember": null
+      },
+      "rom": {
+        "path": "web/public/games/croom.nes",
+        "sha256": "2ce17df1ad66a8a0533c0a8739f5b5ebe275c264924bbe350c42c5ac0394f20e",
+        "size": 24592,
+        "modified": false,
+        "format": "iNES 1.0",
+        "mapper": 0,
+        "prgBytes": 16384,
+        "chrBytes": 8192,
+        "mirroring": "vertical",
+        "headerHex": "4e45531a010101000000000000000000",
+        "nmiVector": 49445,
+        "resetVector": 49370,
+        "irqVector": 49448
+      },
+      "permission": {
+        "license": "GPL-3.0-or-later",
+        "scope": "The fixed-tag README licenses the accompanying whole program GPL version 3 or later and explicitly permits exact iNES/UNIF copies as published by Damian Yerrick without source code. Only the exact official v0.02a iNES ROM is bundled. We include the complete corresponding tagged source and full GPL regardless. Fixed-tag src/litetitle.s credits program by Damian Yerrick and graphics by Damian Yerrick and Sara Crickard; musicseq.s credits Damian Yerrick.",
+        "sourcePath": "third_party/games/croom/source.zip!croom-nes-0.02a/README.md",
+        "publicNotice": {
+          "path": "web/public/games/licenses/croom.txt",
+          "sha256": "1e50b4a3db2cc53b09f243666bd9b642849248b91a398fc29dc2f482dd34abae",
+          "size": 41660
+        },
+        "verbatimMitNotice": false,
+        "manualPath": null,
+        "manualPermissionPages": [],
+        "verbatimWholeProgramGrant": "The accompanying program is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License], version 3 or later. As a special exception, you may copy and distribute exact copies of the program, as published by Damian Yerrick, in iNES or UNIF executable form without source code.",
+        "credits": {
+          "program": [
+            "Damian Yerrick"
+          ],
+          "graphics": [
+            "Damian Yerrick",
+            "Sara Crickard"
+          ],
+          "music": [
+            "Damian Yerrick"
+          ]
+        },
+        "completeGplNotice": true,
+        "correspondingSourceIncluded": true,
+        "sourceIncludesBuildArtMusic": true,
+        "exactPublishedRomException": "As a special exception, you may copy and distribute exact copies of the program, as published by Damian Yerrick, in iNES or UNIF executable form without source code.",
+        "sourceFreeDistributionClaimed": false
+      },
+      "evidence": [
+        {
+          "archiveMember": "croom-nes-0.02a/LICENSE.txt",
+          "sha256": "fc82ca8b6fdb18d4e3e85cfd8ab58d1bcd3f1b29abe782895abd91d64763f8e7",
+          "size": 35068,
+          "purpose": "Complete upstream GPL version 3 license"
+        },
+        {
+          "archiveMember": "croom-nes-0.02a/README.md",
+          "sha256": "2417b8411b443921e54126f95afea848a91cb47f765c22c1a6fe530ff2b8b107",
+          "size": 5430,
+          "purpose": "Whole-program GPL-3.0-or-later with explicit exact-published-iNES/UNIF source-code exemption; modes and retained historical/font inspiration credits"
+        },
+        {
+          "archiveMember": "croom-nes-0.02a/src/litetitle.s",
+          "sha256": "e009475eba40140e717542567a0d511d3a0dbb4f21e0e67101d1110777ea4015",
+          "size": 14924,
+          "purpose": "Fixed-tag exact-ROM exception flag and program/graphics credits: Damian Yerrick and Sara Crickard; menu/instruction text",
+          "lines": "23-26,127-132,749-779"
+        },
+        {
+          "archiveMember": "croom-nes-0.02a/src/memorygame.s",
+          "sha256": "970900bbd266b60c4726d4a8ab2bf6f796f0c56be3e0a25ea377b5473afad288",
+          "size": 13432,
+          "purpose": "D-pad cursor, A flips, B random cursor, A+B handoff",
+          "lines": "87-138,247-314,704-727"
+        },
+        {
+          "archiveMember": "croom-nes-0.02a/src/litemain.s",
+          "sha256": "4f2c2adb322c4f0bb93803d8f91d2108e91da7af880f4dc299a05950aa9470d7",
+          "size": 6656,
+          "purpose": "GPL program notice and NROM-128 header",
+          "lines": "1-40"
+        },
+        {
+          "archiveMember": "croom-nes-0.02a/src/musicseq.s",
+          "sha256": "e87a8359f255cfba193c80ba986aff9ffa5d5863dd4ea4de98c08ef58f719b34",
+          "size": 2045,
+          "purpose": "Damian Yerrick synthesized music data and permissive source-file notice",
+          "lines": "1-55"
+        },
+        {
+          "archiveMember": "croom-nes-0.02a/makefile",
+          "sha256": "71b1995f1c5fc77e0967f4207ca18e4e6ac0620a91d4cafb7fddb7a70c83ad35",
+          "size": 2982,
+          "purpose": "Complete tagged build rules retained with tools/shuffle.py and graphics converters"
+        },
+        {
+          "archiveMember": "croom-nes-0.02a/tilesets/gamegfx.png",
+          "sha256": "d87531e6851c61ddab11c7f964c8a0ff5dbff6a7a2b78d4909d183828546ed68",
+          "size": 2612,
+          "purpose": "Tagged game graphics source; whole-program license and in-ROM art credits retained"
+        },
+        {
+          "archiveMember": "croom-nes-0.02a/tilesets/titlegfx.png",
+          "sha256": "e418b92286e49a587e0e2489a1ddd98fac9554bef022970a2026367fd7370e5f",
+          "size": 2387,
+          "purpose": "Tagged title graphics source retained; no cover extracted for public use"
+        },
+        {
+          "archiveMember": "croom-nes-0.02a/src/litetitle.s",
+          "sha256": "e009475eba40140e717542567a0d511d3a0dbb4f21e0e67101d1110777ea4015",
+          "size": 14924,
+          "purpose": "Fixed-tag src/litetitle.s embeds English instructions, menus and program/graphics credits, including Flip two cards and Graphics by Damian Yerrick and Sara Crickard; no ROM translation."
+        }
+      ],
+      "snapshots": [
+        {
+          "path": "third_party/games/croom/source.zip",
+          "sha256": "b83fe31dd5ece865215a4d3b4fb48cf673d0990f162edac52ff21bdd7c327e9f",
+          "size": 91087
+        },
+        {
+          "path": "third_party/games/croom/LICENSE.txt",
+          "sha256": "fc82ca8b6fdb18d4e3e85cfd8ab58d1bcd3f1b29abe782895abd91d64763f8e7",
+          "size": 35068
+        },
+        {
+          "path": "third_party/games/croom/README.upstream.txt",
+          "sha256": "2417b8411b443921e54126f95afea848a91cb47f765c22c1a6fe530ff2b8b107",
+          "size": 5430
+        },
+        {
+          "path": "third_party/games/croom/makefile.upstream.txt",
+          "sha256": "71b1995f1c5fc77e0967f4207ca18e4e6ac0620a91d4cafb7fddb7a70c83ad35",
+          "size": 2982
+        },
+        {
+          "path": "third_party/games/croom/musicseq.upstream.txt",
+          "sha256": "e87a8359f255cfba193c80ba986aff9ffa5d5863dd4ea4de98c08ef58f719b34",
+          "size": 2045
+        }
+      ],
+      "controls": "菜单用 ↑/↓选择，Enter（START）或 X（A）确认，Z（B）返回可返回的子菜单；游戏中方向键移动光标，X（A）翻牌，Z（B）随机移动光标。双人可共用一只手柄或使用两只手柄，交接时下一位同时按 A+B（键盘 X+Z）。 键盘：方向键=十字键，X=A，Z=B，Enter=START，右 Shift=SELECT。",
+      "caveats": [
+        "The source-free exception applies only to exact published iNES/UNIF executables; not modified ROMs or arbitrary extracted/reused graphics. We retain the source anyway.",
+        "The fixed tag credits Sara Crickard for graphics; current HEAD is not substituted. README font/game inspirations are retained, not represented as independently cleared cover art or wholly original assets.",
+        "No battery-backed save in the iNES header; emulator snapshots remain available. The complete tag is preserved without executing its build tools or claiming a bit-identical rebuild."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,220 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+umask 077
+
+fail() {
+    printf '%s\n' "$1" >&2
+    if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+        printf '%s\n' "$1" >> "$TRIM_TEMP_LOGFILE" || true
+    fi
+    return 1
+}
+
+[ -n "${TRIM_APPDEST:-}" ] && [ -n "${TRIM_PKGVAR:-}" ] || { fail '缺少飞牛应用目录配置。'; exit 1; }
+APP_DIR="$TRIM_APPDEST"
+VAR_DIR="$TRIM_PKGVAR"
+case "$APP_DIR:$VAR_DIR" in /*:/*) ;; *) fail '应用目录必须是绝对路径。'; exit 1 ;; esac
+[ "$APP_DIR" != / ] && [ "$VAR_DIR" != / ] || { fail '应用目录不能是根目录。'; exit 1; }
+BIN="$APP_DIR/server/xiaoniubawang"
+GUARD="$APP_DIR/server/procguard"
+SOCKET="$APP_DIR/xiaoniubawang.sock"
+PID_FILE="$VAR_DIR/xiaoniubawang.pid"
+DATA_DIR="$VAR_DIR/xiaoniubawang-data"
+LOCK_FILE="$VAR_DIR/lifecycle.lock"
+
+private_directory() {
+    [ ! -L "$1" ] && { [ ! -e "$1" ] || [ -d "$1" ]; } || { fail '应用数据路径不是安全目录。'; return 1; }
+    mkdir -p -- "$1"
+    [ "$(stat -c '%u' -- "$1")" = "$(id -u)" ] || { fail '应用数据目录用户不符，请检查目录权限。'; return 1; }
+    chmod 700 "$1"
+}
+
+prepare() {
+    app_uid=$(id -u xiaoniubawang 2>/dev/null) || { fail '缺少应用专用用户。'; return 1; }
+    [ "$app_uid" -gt 0 ] && [ "$(id -u)" = "$app_uid" ] || { fail '服务必须以小牛霸王专用用户运行。'; return 1; }
+    [ -x "$GUARD" ] && [ ! -L "$GUARD" ] || { fail '缺少安全进程辅助程序，请重新安装。'; return 1; }
+    "$GUARD" probe || { fail '系统不支持安全停止进程，请检查飞牛系统版本。'; return 1; }
+    private_directory "$VAR_DIR"
+    for directory in "$DATA_DIR" "$VAR_DIR/logs" "$VAR_DIR/tmp"; do private_directory "$directory"; done
+    for file in "$PID_FILE" "$PID_FILE.new" "$LOCK_FILE" "$VAR_DIR/logs/xiaoniubawang.log" "$VAR_DIR/logs/xiaoniubawang.log.1"; do
+        [ ! -L "$file" ] && { [ ! -e "$file" ] || [ -f "$file" ]; } || { fail '应用运行文件路径不安全。'; return 1; }
+    done
+    export TMPDIR="$VAR_DIR/tmp"
+}
+
+start_ticks() {
+    [ -r "/proc/$1/stat" ] || return 1
+    IFS= read -r proc_line < "/proc/$1/stat" || return 1
+    proc_fields=${proc_line##*) }
+    set -- $proc_fields
+    [ "$#" -ge 20 ] || return 1
+    case "$1" in Z|X|x) return 1 ;; esac
+    shift 19
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    printf '%s\n' "$1"
+}
+
+read_identity() {
+    [ -f "$PID_FILE" ] && [ ! -L "$PID_FILE" ] || return 1
+    IFS=' ' read -r pid ticks socket_id extra < "$PID_FILE" || return 1
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    case "$ticks" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$pid" -gt 1 ] && [ -z "$extra" ]
+}
+
+same_process() { "$GUARD" check "$pid" "$ticks" "$BIN"; }
+
+signal_process() {
+    result=0
+    "$GUARD" "$1" "$pid" "$ticks" "$BIN" || result=$?
+    case "$result" in 0|3) return 0 ;; *) fail '无法安全停止服务，未向其他进程发送信号。'; return 1 ;; esac
+}
+
+socket_identity() {
+    [ -S "$SOCKET" ] && [ ! -L "$SOCKET" ] || return 1
+    LC_ALL=C stat -c '%d:%i:%u:%a:%F' -- "$SOCKET"
+}
+
+write_identity() {
+    printf '%s %s %s\n' "$pid" "$ticks" "${socket_id:-}" > "$PID_FILE.new"
+    chmod 600 "$PID_FILE.new"
+    mv -f -- "$PID_FILE.new" "$PID_FILE"
+}
+
+status() {
+    if read_identity && same_process && before=$(socket_identity) && [ "$before" = "$socket_id" ] &&
+       curl --disable --noproxy '*' --unix-socket "$SOCKET" --fail --silent --max-time 2 http://localhost/app/xiaoniubawang/api/health >/dev/null &&
+       after=$(socket_identity) && [ "$before" = "$after" ] && same_process; then return 0; fi
+    return 3
+}
+
+stop() {
+    if ! read_identity; then
+        [ ! -e "$SOCKET" ] && [ ! -L "$SOCKET" ] && return 0
+        fail '无法确认现有套接字的归属，请检查应用日志。'
+        return 1
+    fi
+    checked=0
+    same_process || checked=$?
+    case "$checked" in 0|3) ;; *) fail '无法核对服务进程，未删除运行文件。'; return 1 ;; esac
+    if [ "$checked" -eq 0 ]; then
+        signal_process TERM || return 1
+        tries=0
+        while [ "$tries" -lt 15 ]; do
+            checked=0
+            same_process || checked=$?
+            case "$checked" in 0) ;; 3) break ;; *) fail '无法核对服务进程，未删除运行文件。'; return 1 ;; esac
+            sleep 1
+            tries=$((tries + 1))
+        done
+        checked=0
+        same_process || checked=$?
+        case "$checked" in 0|3) ;; *) fail '无法核对服务进程，未删除运行文件。'; return 1 ;; esac
+        if [ "$checked" -eq 0 ]; then
+            signal_process KILL || return 1
+            tries=0
+            while [ "$tries" -lt 3 ]; do
+                checked=0
+                same_process || checked=$?
+                case "$checked" in 0) ;; 3) break ;; *) fail '无法核对服务进程，未删除运行文件。'; return 1 ;; esac
+                sleep 1
+                tries=$((tries + 1))
+            done
+        fi
+        checked=0
+        same_process || checked=$?
+        case "$checked" in
+            3) ;;
+            0) fail '服务仍未停止，请检查应用日志。'; return 1 ;;
+            *) fail '无法核对服务进程，未删除运行文件。'; return 1 ;;
+        esac
+    fi
+    if [ -e "$SOCKET" ] || [ -L "$SOCKET" ]; then
+        if [ -z "$socket_id" ] || ! current_socket=$(socket_identity) || [ "$current_socket" != "$socket_id" ]; then
+            fail '套接字归属已变化，未删除现有文件。'
+            return 1
+        fi
+        rm -f -- "$SOCKET"
+    fi
+    rm -f -- "$PID_FILE"
+}
+
+support_assets() {
+    # Installed fnOS mode bits may expose an ACL mask (0775). The native
+    # verifier checks the same opened inode's effective writers and exact hashes.
+    # Support is optional: any failed validation disables it, never the core.
+    SUPPORT_ENABLED=0
+    SUPPORT_DISABLED=0
+    SUPPORT_ROOT=''
+    support_result=0
+    # The helper emits only a fixed machine code on stderr; never log its
+    # canonical physical path. Failed verification remains optional to core.
+    support_app=$("$GUARD" verify-support "$APP_DIR" 2>> "$log_file") || support_result=$?
+    case "$support_result" in
+        0) case "$support_app" in /*) SUPPORT_ENABLED=1; SUPPORT_ROOT="$support_app/support" ;; *) printf '%s\n' 'support_verification_failed invalid_result；支持图片已安全禁用，核心功能不受影响。' >> "$log_file" ;; esac ;;
+        3) SUPPORT_DISABLED=1; printf '%s\n' 'support_disabled explicit_source_build；此源码构建已显式禁用支持图片，核心功能不受影响。' >> "$log_file" ;;
+        *) printf 'support_verification_exit=%s；支持图片不可用，已安全禁用；核心功能不受影响，请检查原图或应用安装权限。\n' "$support_result" >> "$log_file" ;;
+    esac
+    return 0
+}
+
+start() {
+    if status; then return 0; fi
+    if read_identity; then stop || return 1; fi
+    [ -x "$BIN" ] && [ ! -L "$BIN" ] || { fail '缺少服务程序，请重新安装。'; return 1; }
+    [ -f "$APP_DIR/web/dist/index.html" ] || { fail '缺少网页资源，请重新安装。'; return 1; }
+    if [ -e "$SOCKET" ] || [ -L "$SOCKET" ]; then fail '套接字路径已被占用，请检查应用日志。'; return 1; fi
+    log_file="$VAR_DIR/logs/xiaoniubawang.log"
+    if [ -f "$log_file" ] && [ "$(wc -c < "$log_file")" -gt 8388608 ]; then mv -f -- "$log_file" "$log_file.1"; fi
+    support_assets
+    set -- --socket "$SOCKET" --web-root "$APP_DIR/web/dist" --data-dir "$DATA_DIR"
+    if [ "$SUPPORT_ENABLED" -eq 1 ]; then
+        set -- "$@" --support-root "$SUPPORT_ROOT" --approve-support-assets
+    elif [ "$SUPPORT_DISABLED" -eq 1 ]; then
+        set -- "$@" --without-support-assets
+    fi
+    "$BIN" "$@" 9>&- </dev/null >> "$log_file" 2>&1 &
+    pid=$!
+    ticks=''
+    tries=0
+    while [ "$tries" -lt 3 ]; do
+        if ticks=$(start_ticks "$pid") && same_process; then break; fi
+        sleep 1
+        tries=$((tries + 1))
+    done
+    [ -n "$ticks" ] && same_process || { fail '服务启动失败，请检查应用日志。'; return 1; }
+    socket_id=''
+    write_identity
+    tries=0
+    while [ "$tries" -lt 15 ]; do
+        if ! same_process; then stop || true; fail '服务提前退出，请检查应用日志。'; return 1; fi
+        if before=$(socket_identity); then
+            socket_id="$before"
+            write_identity
+            if curl --disable --noproxy '*' --unix-socket "$SOCKET" --fail --silent --max-time 1 http://localhost/app/xiaoniubawang/api/health >/dev/null &&
+               after=$(socket_identity) && [ "$before" = "$after" ] && same_process; then return 0; fi
+        fi
+        sleep 1
+        tries=$((tries + 1))
+    done
+    stop || true
+    fail '启动检查超时，请检查应用日志。'
+    return 1
+}
+
+case "${1:-}" in
+    status) status ;;
+    start|stop|restart)
+        command -v flock >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || { fail '缺少应用启动所需的 flock 或 curl。'; exit 1; }
+        prepare
+        exec 9>"$LOCK_FILE"
+        flock -w 25 9 || { fail '服务正在启动或停止，请稍后重试。'; exit 1; }
+        case "$1" in
+            start) start ;;
+            stop) stop ;;
+            restart) stop; start ;;
+        esac
+        ;;
+    *) fail '使用方式：main start、stop、status 或 restart。'; exit 2 ;;
+esac

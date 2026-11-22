@@ -1,0 +1,15 @@
+* text=auto
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.nes binary
+*.wasm binary
+*.zip binary
+*.tar.gz binary
+*.sh text eol=lf
+emulator/vendor/** -text
+third_party/** -text
+*.go text eol=lf
+*.py text eol=lf
+emulator/vendor/** -text
+third_party/** -text

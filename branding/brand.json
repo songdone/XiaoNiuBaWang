@@ -1,0 +1,13 @@
+{
+  "id": "xiaoniubawang",
+  "name": "小牛霸王学习机",
+  "shortName": "小牛霸王",
+  "englishName": "XiaoNiuBaWang",
+  "version": "0.3.0",
+  "distributor": "6uos",
+  "repositoryUrl": "https://github.com/songdone/XiaoNiuBaWang",
+  "logo": "brand/logo.png",
+  "icon256": "brand/icon_256.png",
+  "icon512": "brand/icon_512.png",
+  "gatewayPrefix": "/app/xiaoniubawang"
+}

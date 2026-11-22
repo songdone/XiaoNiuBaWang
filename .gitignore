@@ -1,0 +1,40 @@
+# Development and delivery artifacts stay local.
+/.DS_Store
+/.local-data/
+/build
+/dist
+/开发存档/
+/最新安装包/
+/上架资料/
+/.qa-*
+/.delivery-*
+
+# Approved private appreciation originals are packaged locally, not published.
+/assets/support/
+/support-assets/
+/donation/
+**/support-disabled.flag
+
+# Generated frontend, dependencies and local caches.
+/web/dist/
+**/node_modules/
+**/.vite/
+**/.taste-skill/
+**/test-results/
+/internal/store/.backend-verify/
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
+/artifacts/
+/test-results/
+/playwright-report/
+*.fpk
+*.log
+
+# Credentials and local environment files never belong in the repository.
+.env
+.env.*
+!.env.example
+*.key
+*.p12
+*.pfx

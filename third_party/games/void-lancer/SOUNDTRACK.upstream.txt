@@ -1,0 +1,46 @@
+# VOID LANCER — Original 2A03 Soundtrack
+
+VOID LANCER uses the stock NTSC NES/Famicom 2A03 channels only: two Pulse channels, Triangle and Noise. DMC and expansion audio are intentionally unused.
+
+## Tracks
+
+| Mode | Track | Character | Step speed |
+| --- | --- | --- | --- |
+| Title | **Signal in the Void** | Suspended F#-minor colors, spacious lead, glassy arpeggios | 6 frames |
+| Stage 1 | **Vector Burn** | D-Dorian propulsion, syncopation, chromatic launch notes | 5 frames |
+| Stage 2 | **Glass Orbit** | Phrygian-dominant color, semitone motion, angular counterline | 5 frames |
+| Stage 3 | **Core Relay** | C# pedal tone, diminished/whole-tone fragments, industrial 3+3+2 accents | 4 frames |
+| Boss | **Black Star Engine** | Two chromatic pitch planes colliding over a 3+3+2 drive | 4 frames |
+| Victory | **Afterburn Glow** | D-major/add6 release, slower and wider voicing | 7 frames |
+
+At 60 Hz these are approximately 150 BPM, 180 BPM, 180 BPM, 225 BPM, 225 BPM and 128.6 BPM when one step is treated as a sixteenth note. Each loop is 128 steps, giving roughly 8.5–14.9 seconds before repetition depending on the song.
+
+## Arrangement rules
+
+- **Pulse 1:** lead voice. Duty cycle changes by section and the timer gets a tiny guarded modulation after the attack.
+- **Pulse 2:** counterline/arpeggio. Uses a different duty schedule and can be temporarily stolen by gameplay SFX.
+- **Triangle:** moving bass/pedal voice; deliberate rests keep the mixer from becoming a constant wall.
+- **Noise:** authored hat/snare/kick/crash events rather than a fixed metronomic click.
+- **Dynamics:** pulse volume is reshaped every video frame, so notes have attack/decay instead of one flat constant volume.
+- **Identity:** stages 1, 2 and 3 have different tonal centers and interval vocabularies instead of sharing a single generic stage loop.
+
+## Originality policy
+
+The music was written from scratch for this project. Historical NES music was used only to study the hardware-era technique of doing more with four synthesis channels. No commercial melody, transcription, pattern, NSF, FTM, MIDI, DPCM sample or instrument data is included.
+
+Relevant hardware/workflow references:
+
+- https://www.nesdev.org/wiki/APU_Pulse
+- https://www.nesdev.org/wiki/APU_Sweep
+- https://famistudio.org/doc/soundengine/
+- https://famistudio.org/doc/instruments/
+
+## Auditioning
+
+The ROM is authoritative. For a quick desktop preview without an emulator:
+
+```bash
+python tools/render_audio_preview.py -o build/soundtrack-preview.wav --split-dir build/audio-preview
+```
+
+The renderer is intentionally approximate and is **not** a cycle-accurate 2A03 emulator.

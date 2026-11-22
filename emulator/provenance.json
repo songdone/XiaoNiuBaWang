@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "buildID": "20261121-core-01",
+  "core": {
+    "repository": "https://github.com/libretro/libretro-fceumm",
+    "commit": "77468e568d9fe9c48d684ca911f1a3fe7259fdf7",
+    "archiveURL": "https://codeload.github.com/libretro/libretro-fceumm/tar.gz/77468e568d9fe9c48d684ca911f1a3fe7259fdf7",
+    "archiveSHA256": "1e4f9855ff9fac48ead5177e559a9714aad25fa84b45dfa68b518224760abcab",
+    "archiveFiles": 712,
+    "vendorFiles": 712,
+    "modifiedFiles": [
+      "src/drivers/libretro/libretro.c"
+    ],
+    "patchSHA256": "5e5951c591eca72b11dea7f31399799b83e1cf1f50cb51b95112b5483116e582",
+    "patchedTreeSHA256": "3e484f0cfc5406a2dabd98e9fe40408c49649dfb7e1e0c19e217b43849688a02",
+    "verified": "All 712 file paths and bytes equal pinned official archive plus declared patch; no extra or missing files"
+  },
+  "frontend": {
+    "kind": "dedicated Emscripten libretro frontend, no emulator rewrite",
+    "license": "GPL-2.0-or-later",
+    "source": [
+      "emulator/frontend.c",
+      "emulator/runtime.js",
+      "emulator/runtime.d.ts"
+    ],
+    "buildScript": "scripts/build-emulator.sh"
+  },
+  "compiler": {
+    "name": "Emscripten",
+    "version": "4.0.20",
+    "sdkRelease": "c387d7a7e9537d0041d2c3ae71b7538cc978104e",
+    "host": "macOS arm64",
+    "installScope": "build/20261121-core-01/toolchain",
+    "officialSourceURL": "https://codeload.github.com/emscripten-core/emsdk/tar.gz/refs/tags/4.0.20",
+    "sdkSourceArchiveSHA256": "2a8a70eb1c0a47883272a001feb4c7209db6e9bcc36774dd9770050e7ac64fa0",
+    "downloadChecksums": {
+      "c387d7a7e9537d0041d2c3ae71b7538cc978104e-wasm-binaries-arm64.tar.xz": "144433e905ec1db726df9128e99624b9b4a3716e96dfb37dde22e2294a675c07",
+      "python-3.13.3-0-macos-arm64.tar.gz": "2b0899d7ade9463b0c909ef23aeea27546a4f412637998d817a49718bc2bac19",
+      "node-v22.16.0-darwin-arm64.tar.gz": "1d7f34ec4c03e12d8b33481e5c4560432d7dc31a0ef3ff5a4d9a8ada7cf6ecc9"
+    }
+  },
+  "outputs": {
+    "fceumm-core.wasm": {
+      "bytes": 833894,
+      "sha256": "a105745d1f737016b03d9627699761fc68dc6e0f884245dcbab63ce5579fc1d8"
+    },
+    "fceumm-core.mjs": {
+      "bytes": 62143,
+      "sha256": "6930dd173b25ddc79502137adab6ee263e98887edfc6f5e1e5b5da7f6accd539"
+    },
+    "fceumm.js": {
+      "bytes": 13113,
+      "sha256": "371c222d308ba39b726ad4629c5f365aab03c4d64d200768b3e57c5f3d0caeac"
+    },
+    "fceumm.d.ts": {
+      "bytes": 2494,
+      "sha256": "0d73dcecc801d7825feaf6d1690463a63fdb93163d64fb89eeacb105d72d75f5"
+    }
+  },
+  "rebuild": {
+    "cleanRebuildPerformed": true,
+    "allOutputsByteIdentical": true,
+    "evidence": "build/20261121-core-01/emulator/reproducible-build.json"
+  },
+  "diagnostics": {
+    "project": "zorchenhimer/keytest",
+    "tag": "2024-02-25",
+    "license": "MIT",
+    "releaseURL": "https://github.com/zorchenhimer/keytest/releases/download/2024-02-25/keytest.nes.zip",
+    "releaseArchiveSHA256": "4190ec05f8a86f658416466f36e22a5fecb9e38b06fc347e042c19d8d2020601",
+    "sourceURL": "https://codeload.github.com/zorchenhimer/keytest/zip/refs/tags/2024-02-25",
+    "sourceArchiveSHA256": "ed15f1905c4d2755e9f1dd72cb9b622821f4158e4e8ee28663489b7e6858535f",
+    "derivative": "Diagnostic-only 13-row bus scanner derived from upstream ReadKeyboard; no educational/game program",
+    "matrixGenerator": "emulator/diagnostics/build-matrix-diagnostic.py"
+  },
+  "verification": {
+    "matrixKeys": 38,
+    "matrixCases": "18 Family + 20 Subor press/release + chords via guest $4016/$4017",
+    "catalogROMs": [
+      {
+        "id": "table-tennis",
+        "romSHA256": "05122457672f95fcf2ee518c3f37e506617725c2d031100b1b1c8b7785068ea3",
+        "frames": 240,
+        "deterministicState": true,
+        "audioNonzeroSamples": 0
+      },
+      {
+        "id": "lan-master",
+        "romSHA256": "becfeafb80479c330333c9e9385417f68f3c88e85443dfb37b05ae9283f3ea45",
+        "frames": 240,
+        "deterministicState": true,
+        "audioNonzeroSamples": 292844
+      },
+      {
+        "id": "lawn-mower",
+        "romSHA256": "181ef3ff1769a85ae98736e02809e65e5d758b453ebb43ec4b9fe60c93ad224c",
+        "frames": 240,
+        "deterministicState": true,
+        "audioNonzeroSamples": 339362
+      },
+      {
+        "id": "void-lancer",
+        "romSHA256": "5eb801aca68131a3d17fa82d8901d46f6098b878d1e00cd1c47d00c001c2405a",
+        "frames": 240,
+        "deterministicState": true,
+        "audioNonzeroSamples": 392856
+      },
+      {
+        "id": "cargo-shift",
+        "romSHA256": "d1a6deb7528d5349b69b02fe918fba8fa9e7fdfbd5d8be455d6b9d173d7545ef",
+        "frames": 240,
+        "deterministicState": true,
+        "audioNonzeroSamples": 66572
+      },
+      {
+        "id": "thwaite",
+        "romSHA256": "a2df24d9c9f72e56c2fdc4c703becc47a5700ad0158da8208247635ebeb3779c",
+        "frames": 240,
+        "deterministicState": true,
+        "audioNonzeroSamples": 41302,
+        "evidence": "build/20261123-core-seven-01/smoke-results.json"
+      },
+      {
+        "id": "croom",
+        "romSHA256": "2ce17df1ad66a8a0533c0a8739f5b5ebe275c264924bbe350c42c5ac0394f20e",
+        "frames": 240,
+        "deterministicState": true,
+        "audioNonzeroSamples": 237416,
+        "evidence": "build/20261123-core-seven-01/smoke-results.json"
+      }
+    ],
+    "browserChecks": 17,
+    "browserPassed": true,
+    "gatewayPath": "/app/xiaoniubawang/cores/",
+    "nodeEvidence": "build/20261121-core-01/emulator/smoke-results.json",
+    "browserEvidence": "build/20261121-core-01/emulator/browser-results.json",
+    "renderEvidence": "build/20261121-core-01/emulator/browser-render.png"
+  },
+  "notVerified": [
+    "Original authorized learning-card ROMs remain pending until supplied",
+    "Physical mobile hardware not tested",
+    "Table Tennis produced silent PCM during the tested 240-frame interval; other four ROMs produced nonzero audio"
+  ]
+}

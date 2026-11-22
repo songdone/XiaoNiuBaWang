@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; connect-src 'none'">
+  <title>小牛霸王 · 目录授权</title>
+  <style>body{font:16px/1.7 system-ui,sans-serif;max-width:36rem;margin:10vh auto;padding:24px;color:#252b31;background:#fff}a{color:#175b90}</style>
+</head>
+<body>
+  <h1>卡带目录授权</h1>
+  <p id="status" role="status">正在核对授权结果…</p>
+  <a id="back" href="./">返回小牛霸王</a>
+  <script>
+    // Independent adapter for the documented FNOS App Auth callback contract.
+    // No SDK handshake, remote resource, token, or filesystem request is used here.
+    (() => {
+      const pendingKey = 'xnbw-directory-auth';
+      const returnKey = 'xnbw-directory-auth-return';
+      const params = new URLSearchParams(location.search);
+      history.replaceState(null, '', location.pathname);
+      const status = document.getElementById('status');
+      const back = document.getElementById('back');
+      try {
+        const base = location.pathname.endsWith('/fnos-callback.html') ? location.pathname.slice(0, -'/fnos-callback.html'.length) : null;
+        const pending = JSON.parse(sessionStorage.getItem(pendingKey) || 'null');
+        if (base === null || !pending || pending.origin !== location.origin || pending.base !== base || ![base + '/', base + '/index.html', base || '/'].includes(pending.sourcePath) || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(pending.state) || !Number.isFinite(pending.createdAt) || pending.createdAt > Date.now() || !['popup', 'self'].includes(pending.mode)) throw new Error('授权请求不匹配或已失效，请返回后重新选择目录。');
+        if (pending.mode === 'self' && sessionStorage.getItem(returnKey)) throw new Error('此授权结果已处理，请返回应用。');
+        const target = new URL(pending.returnUrl);
+        if (target.origin !== location.origin || target.pathname !== base + '/' || target.search) throw new Error('授权返回地址无效，请重新选择目录。');
+        back.href = target.href;
+        if (['status', 'method', 'appName', 'state', 'path'].some((key) => params.getAll(key).length > 1) || params.get('state') !== pending.state || params.get('appName') !== 'xiaoniubawang' || params.get('method') !== 'pickUserFile' || !['success', 'cancel', 'error'].includes(params.get('status'))) throw new Error('无法核对授权结果，请返回后重新选择目录。');
+        let outcome = params.get('status');
+        if (Date.now() - pending.createdAt >= 300000) outcome = 'expired';
+        if (outcome === 'success') {
+          const raw = params.get('path');
+          if (!raw || raw.length > 8192) throw new Error('目录选择结果无效，请重新选择目录。');
+          const paths = JSON.parse(raw);
+          if (!Array.isArray(paths) || paths.length !== 1 || typeof paths[0] !== 'string' || !/^\/vol[1-9]\d*\//.test(paths[0]) || new TextEncoder().encode(paths[0]).length > 4096 || /[\\\p{Cc}]/u.test(paths[0]) || paths[0].split('/').slice(1).some((part) => !part || part === '.' || part === '..')) throw new Error('目录选择结果无效，请重新选择目录。');
+          // Physical paths deliberately stop here. Only refreshed server-owned handles are usable.
+        }
+        const result = { type: 'xnbw-directory-auth-result', state: pending.state, appName: 'xiaoniubawang', method: 'pickUserFile', status: outcome };
+        status.textContent = ({success: '选择并授权已完成，正在刷新授权目录。', cancel: '已取消选择，没有导入任何卡带。', error: '授权未完成，请返回后重试。', expired: '授权请求已过期，请返回后重新选择目录。'})[outcome];
+        sessionStorage.removeItem(pendingKey);
+        if (pending.mode === 'popup') {
+          if (!window.opener || window.opener.closed || window.opener.location.origin !== location.origin || window.opener.location.pathname !== pending.sourcePath) throw new Error('原应用窗口已关闭或会话已变化，请返回后刷新授权目录。');
+          window.opener.postMessage(result, location.origin);
+          window.close();
+        } else {
+          sessionStorage.setItem(pendingKey, JSON.stringify(pending));
+          sessionStorage.setItem(returnKey, JSON.stringify(result));
+          location.replace(target.href);
+        }
+      } catch (error) {
+        status.textContent = error instanceof Error && /[\u4e00-\u9fff]/.test(error.message) ? error.message : '无法核对授权结果，请返回后重新选择目录。';
+      }
+    })();
+  </script>
+</body>
+</html>

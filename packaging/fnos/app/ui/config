@@ -1,0 +1,13 @@
+{
+  ".url": {
+    "xiaoniubawang.Application": {
+      "title": "小牛霸王学习机",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "gatewayPrefix": "/app/xiaoniubawang",
+      "gatewaySocket": "xiaoniubawang.sock",
+      "url": "/app/xiaoniubawang/",
+      "allUsers": true
+    }
+  }
+}

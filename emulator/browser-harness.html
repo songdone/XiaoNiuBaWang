@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>小牛霸王核心验证</title>
+<style>body{font:15px system-ui;margin:24px;background:#18222d;color:#edf2f7}button{font:inherit;padding:10px 16px;margin:0 8px 16px 0}canvas{width:512px;height:448px;image-rendering:pixelated;background:black;border:1px solid #64748b}pre{white-space:pre-wrap;max-width:1000px;font-size:12px}</style>
+<h1>小牛霸王核心验证</h1>
+<p>验证本地模拟核心，使用开源键盘诊断程序和公开授权游戏。</p>
+<button id="verify">验证画面、声音、存档与键盘</button>
+<button id="download">下载验证记录</button>
+<canvas id="screen" width="256" height="224" tabindex="0" aria-label="游戏画面"></canvas>
+<pre id="result" aria-live="polite">准备就绪</pre>
+<script type="module">
+import {create,browserCodeToRetroKey,JOYPAD} from './cores/fceumm.js';
+const output=document.getElementById('result');
+const canvas=document.getElementById('screen');
+const checks=[];
+let emulator;
+window.verification={status:'ready',checks};
+function check(condition,name,details=null){if(!condition)throw new Error(name);checks.push({name,pass:true,details});}
+function steps(count=3){let frame;for(let i=0;i<count;i++)frame=emulator.runFrame();return frame;}
+function matrix(){return [...emulator.getSystemRAM().slice(0x400,0x41a)];}
+const digest=async(bytes)=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(v=>v.toString(16).padStart(2,'0')).join('');
+const displayResults=()=>{output.textContent=(window.verification.status==='passed'?'验证通过':window.verification.status==='failed'?'验证失败':'准备就绪')+'\n'+JSON.stringify(window.verification,null,2);};
+document.getElementById('verify').onclick=async()=>{
+  try{
+    checks.length=0;
+    output.textContent='正在验证本地核心…';
+    if(emulator)await emulator.destroy();
+    let audioSamples=0,nonzeroSamples=0;
+    emulator=await create({canvas,onAudio:({samples})=>{audioSamples+=samples.length;for(const value of samples)if(value!==0)nonzeroSamples++;}});
+    window.emulator=emulator;
+    await emulator.resumeAudio();
+    const game=new Uint8Array(await(await fetch('./game.nes')).arrayBuffer());
+    emulator.loadRom(game);
+    steps(120);
+    emulator.setButton(0,JOYPAD.START,true);steps(4);emulator.releaseAll();
+    let frame=steps(116);
+    const display=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height);
+    check(frame.width===256&&frame.height===224,'核心输出画面尺寸正确',{width:frame.width,height:frame.height});
+    check(audioSamples>100000&&nonzeroSamples>100,'48 千赫双声道音频包含游戏声音',{audioSamples,nonzeroSamples});
+    check(await digest(display.data)===await digest(frame.data),'画布与核心输出像素一致',await digest(frame.data));
+    check(emulator.getDiagnostics().audioState==='running','点击后浏览器声音已启用',emulator.getDiagnostics());
+    emulator.setVolume(0.2);check(emulator.getDiagnostics().volume===0.2,'音量调节有效');
+    const state=emulator.getState();
+    const expected=steps(3);const expectedHash=await digest(expected.data);
+    check(emulator.loadState(state),'即时存档可读取');
+    const actual=steps(3);
+    check(await digest(actual.data)===expectedHash,'读档后画面逐像素一致',{stateBytes:state.length,frameSHA256:expectedHash});
+    emulator.start();
+    await new Promise(resolve=>setTimeout(resolve,350));
+    check(emulator.isRunning&&emulator.getDiagnostics().frameNumber>246,'浏览器持续驱动核心运行',emulator.getDiagnostics());
+    emulator.pause();check(!emulator.isRunning,'暂停后停止运行');
+    const diagnostic=new Uint8Array(await(await fetch('./matrix-diagnostic.nes')).arrayBuffer());
+    emulator.loadRom(diagnostic);
+    const blank=Array(26).fill(30);
+    emulator.setKeyboardDevice('family');steps();
+    check(JSON.stringify(matrix())===JSON.stringify(blank),'Family 键盘无按键残留');
+    emulator.setKey(browserCodeToRetroKey('Backquote'),true);
+    emulator.setKey(browserCodeToRetroKey('ShiftLeft'),true);
+    steps();
+    check(matrix()[2]===26&&matrix()[15]===28,'Family 反引号与左 Shift 正确送达键盘端口',matrix());
+    window.dispatchEvent(new Event('blur'));steps();
+    check(JSON.stringify(matrix())===JSON.stringify(blank),'窗口失焦后释放全部键盘按键',matrix());
+    emulator.setKey(browserCodeToRetroKey('KeyA'),true);steps();
+    emulator.setKeyboardDevice('subor');steps();
+    check(JSON.stringify(matrix())===JSON.stringify(blank),'切换键盘设备后释放按键');
+    emulator.setKey(browserCodeToRetroKey('NumpadEnter'),true);
+    emulator.setKey(browserCodeToRetroKey('Pause'),true);
+    emulator.setKey(browserCodeToRetroKey('NumLock'),true);
+    steps();
+    const subor=matrix();
+    check(subor[18]===26&&subor[23]===14&&subor[24]===22,'小霸王小键盘回车、暂停键与数字锁定键映射正确',subor);
+    emulator.releaseAll();steps();
+    check(JSON.stringify(matrix())===JSON.stringify(blank),'释放操作清空小霸王键盘按键');
+    const sram=emulator.getSaveRAM();sram.fill(0xA5);
+    check(sram.length===8192&&emulator.loadSaveRAM(sram)&&emulator.getSaveRAM().every(x=>x===0xA5),'浏览器电池存档写入与读取一致',{bytes:sram.length});
+    check(browserCodeToRetroKey({code:'Semicolon',key:':'})===59&&browserCodeToRetroKey('ShiftRight')===303,'标点与左右修饰键映射正确');
+    emulator.loadRom(game);emulator.setKeyboardDevice('none');steps(120);
+    emulator.start();
+    window.verification={status:'passed',checks,version:emulator.version,moduleBase:import.meta.url,resources:performance.getEntriesByType('resource').filter(x=>/cores\//.test(x.name)).map(x=>x.name)};
+    displayResults();
+    await fetch('./evidence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.verification)});
+  }catch(error){window.verification={status:'failed',checks,error:String(error),stack:error.stack};displayResults();}
+};
+document.getElementById('download').onclick=()=>{const a=document.createElement('a');a.download='小牛霸王核心验证记录.json';a.href=URL.createObjectURL(new Blob([JSON.stringify(window.verification,null,2)],{type:'application/json'}));a.click();URL.revokeObjectURL(a.href);};
+</script>
+</html>
