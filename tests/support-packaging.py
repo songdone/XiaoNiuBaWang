@@ -220,7 +220,7 @@ class SupportPackagingTests(unittest.TestCase):
 
     def test_dynamic_version_manifest_source_and_delivery(self):
         brand = SOURCE["application_brand"]()
-        self.assertEqual(brand["version"], "0.3.0")
+        self.assertEqual(brand["version"], "0.3.1")
         text = (ROOT / "packaging/fnos/manifest").read_text().replace("@PLATFORM@", "x86")
         self.assertEqual(PACKAGE["manifest"](text, "amd64")["version"], brand["version"])
         self.rejected(lambda: PACKAGE["manifest"](text.replace(f"version={brand['version']}", "version=0.1.0"), "amd64"), "Wrong manifest version")

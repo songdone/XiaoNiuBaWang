@@ -37,19 +37,54 @@ def save(path, value):
         stream.write("\n")
 
 
+def parse_go_version(text):
+    match = re.search(r"\bgo(\d+)\.(\d+)(?:\.(\d+))?", text or "")
+    if not match:
+        return None
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3) or 0))
+
+
 def resolve_go(explicit):
     if explicit:
         path = Path(explicit).expanduser().resolve()
         if path.is_file():
             return path
         raise ValueError("Configured Go toolchain does not exist")
-    local = list((Path.home() / "go/pkg/mod/golang.org").glob("toolchain@v0.0.1-go1.26.*/bin/go"))
-    if local:
-        return max(local, key=lambda p: int(re.search(r"go1\.26\.(\d+)", str(p)).group(1)))
+    mod_root = Path(os.environ.get("GOMODCACHE") or (Path.home() / "go/pkg/mod")).expanduser()
+    local = list((mod_root / "golang.org").glob("toolchain@v0.0.1-go*/bin/go"))
+    candidates = []
+    for path in local:
+        version = parse_go_version(str(path))
+        if version and version >= (1, 26, 0):
+            candidates.append((version, path))
+    if candidates:
+        return max(candidates, key=lambda item: item[0])[1]
     located = shutil.which("go")
     if not located:
-        raise ValueError("Go 1.26 toolchain required; set --go")
+        raise ValueError("Go 1.26+ toolchain required; set --go")
     return Path(located).resolve()
+
+
+def resolve_checker(explicit):
+    if explicit:
+        path = Path(explicit).expanduser().resolve()
+        if path.is_file():
+            return path
+        raise ValueError(f"Configured checker script does not exist: {path}")
+    env_checker = os.environ.get("FNOS_CHECKER")
+    if env_checker:
+        path = Path(env_checker).expanduser().resolve()
+        if path.is_file():
+            return path
+        raise ValueError(f"Configured FNOS_CHECKER does not exist: {path}")
+    candidates = (
+        Path.home() / ".gemini/config/plugins/fnos-bullbench-toolkit/skills/fnos-app-engineering/scripts/check-fnos-project.py",
+        Path.home() / ".zcode/skills/fnos-app-engineering/scripts/check-fnos-project.py",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    raise ValueError("check-fnos-project.py not found; pass --checker or set FNOS_CHECKER")
 
 
 def run(command, build, name, env=None, cwd=ROOT):
@@ -387,8 +422,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-id", default=datetime.now().strftime("%Y%m%d-fpk-%H%M%S") + "-" + uuid.uuid4().hex[:4])
     parser.add_argument("--go", default=os.environ.get("GO_BINARY"))
-    parser.add_argument("--fnpack", type=Path, help="verified official tool; defaults to existing 1.2.3 for --publish or pinned 1.3.3 for signing/testing")
-    parser.add_argument("--checker", type=Path, default=Path.home() / ".zcode/skills/fnos-app-engineering/scripts/check-fnos-project.py")
+    parser.add_argument("--fnpack", type=Path, default=(Path(os.environ["FNPACK_BINARY"]) if os.environ.get("FNPACK_BINARY") else None), help="verified official tool; defaults to existing 1.2.3 for --publish or pinned 1.3.3 for signing/testing")
+    parser.add_argument("--checker", type=Path, default=None, help="path to check-fnos-project.py (auto-discovered from installed skills or FNOS_CHECKER)")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--nosign", action="store_true", help="unsigned local testing only; never a signed release")
     mode.add_argument("--publish", action="store_true", help="existing official v1.2.3 ordinary packaging flow; unsigned, not publication approval")
@@ -397,6 +432,7 @@ def main():
     parser.add_argument("--cert", type=Path, help="existing matching developer certificate path; requires --release and --key")
     parser.add_argument("--skip-web", action="store_true", help="reuse existing verified web/dist; its full file hashes are recorded")
     parser.add_argument("--no-deliver", action="store_true", help="staging build: do not replace the real 最新安装包 directory")
+    parser.add_argument("--external-source", action="store_true", help="slim FPK: ship corresponding source as companion archive instead of embedding source.zip inside app.tgz")
     parser.add_argument("--output-root", type=Path, default=ROOT / "开发存档/上架发布/构建", help="internal project archive folder for isolated build outputs")
     parser.add_argument("--without-support", action="store_true", help="explicit source-only build: exclude private payment images and disable support launch flags; default release requires approved originals")
     args = parser.parse_args()
@@ -429,6 +465,7 @@ def main():
             approved = support_module["copy_approved"](ROOT / "assets/support", frozen_support)
             report["support"] = {"enabled": True, "files": approved, "privateImagesExcludedFromSource": True}
         go = resolve_go(args.go)
+        checker = resolve_checker(args.checker)
         default_fnpack = Path.home() / ".cache/fontbull/tools/fnpack-1.2.3-darwin-arm64" if args.publish else ROOT / "build/20261121-core-01/toolchain/fnpack"
         fnpack = (args.fnpack or default_fnpack).resolve()
         expected_fnpack = PINNED_PUBLISH_FNPACK if args.publish else PINNED_FNPACK
@@ -444,10 +481,11 @@ def main():
             else:
                 status = run([fnpack, "cert", "status"], build, "fnpack-cert-status")
                 report["signingContext"] = signing_preflight(status)
-        if "go1.26." not in report["tools"]["goVersion"]:
-            raise ValueError("Go 1.26 toolchain required")
+        go_ver = parse_go_version(report["tools"]["goVersion"])
+        if not go_ver or go_ver < (1, 26, 0):
+            raise ValueError("Go 1.26+ toolchain required")
         run([sys.executable, "-I", "-B", ROOT / "scripts/check-assets.py"], build, "source-assets")
-        run([sys.executable, "-I", "-B", args.checker, ROOT, "--package-root", ROOT / "packaging/fnos"], build, "source-official-check")
+        run([sys.executable, "-I", "-B", checker, ROOT, "--package-root", ROOT / "packaging/fnos"], build, "source-official-check")
         for hook in (ROOT / "packaging/fnos/cmd").iterdir():
             if hook.is_file():
                 run(["/bin/sh", "-n", hook], build, "syntax-" + hook.name)
@@ -461,7 +499,7 @@ def main():
         before = source_module["files_manifest"]()
         report["sourceTreeSHA256"] = source_module["tree_digest"](before)
         run([sys.executable, "-I", "-B", ROOT / "scripts/collect-notices.py", "--output", build / "notices", "--go", go], build, "dependency-notices")
-        run([sys.executable, "-I", "-B", ROOT / "scripts/make-source.py", "--output", build / "source/source.zip", "--build-id", args.build_id, "--notices", build / "notices"], build, "source-snapshot")
+        run([sys.executable, "-I", "-B", ROOT / "scripts/make-source.py", "--output", build / "source/source.zip", "--build-id", args.build_id, "--notices", build / "notices", "--go", go], build, "source-snapshot")
         test_command = [sys.executable, "-I", "-B", ROOT / "tests/support-packaging.py", "--evidence", build / "support-tests", "--source-zip", build / "source/source.zip"]
         if args.without_support:
             test_command.append("--without-support")
@@ -499,7 +537,21 @@ def main():
             shutil.copytree(build / "notices/licenses", web / "licenses", dirs_exist_ok=True)
             shutil.copy2(build / "notices/LICENSES.txt", web / "LICENSES.txt")
             (web / "source").mkdir()
-            shutil.copy2(build / "source/source.zip", web / "source/source.zip")
+            if args.external_source:
+                brand_info = source_module["application_brand"]()
+                offer = {
+                    "schemaVersion": 1,
+                    "mode": "external-companion-archive",
+                    "archive": DELIVERY_SOURCE,
+                    "version": version,
+                    "buildId": args.build_id,
+                    "sha256": report["source"]["sha256"],
+                    "treeSHA256": report["source"]["treeSHA256"],
+                    "repositoryUrl": brand_info.get("repositoryUrl", ""),
+                }
+                (web / "source/SOURCE-OFFER.json").write_text(json.dumps(offer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            else:
+                shutil.copy2(build / "source/source.zip", web / "source/source.zip")
             server = stage / "app/server"
             server.mkdir(parents=True)
             target_env = dict(env, GOOS="linux", GOARCH=arch, GOAMD64="v1", GOARM64="v8.0")
@@ -513,8 +565,9 @@ def main():
                 os.chmod(server / name, 0o755)
             support_flags = ["--without-support"] if args.without_support else []
             mode_flags = ["--publish"] if args.publish else ["--release"] if args.release else ["--nosign"]
-            run([sys.executable, "-I", "-B", ROOT / "scripts/check-package.py", "--stage", stage, "--arch", arch, "--report", build / ("stage-" + arch + ".json")] + support_flags + mode_flags, build, "stage-check-" + arch)
-            official_gate(stage, None, arch, build, "stage-official-" + arch, args.checker)
+            source_flags = ["--external-source", "--source-zip", build / "source/source.zip"] if args.external_source else []
+            run([sys.executable, "-I", "-B", ROOT / "scripts/check-package.py", "--stage", stage, "--arch", arch, "--report", build / ("stage-" + arch + ".json")] + support_flags + mode_flags + source_flags, build, "stage-check-" + arch)
+            official_gate(stage, None, arch, build, "stage-official-" + arch, checker)
             rawdir = build / "raw" / arch
             rawdir.mkdir(parents=True)
             output = run(fnpack_command(fnpack, stage, args.release, args.key, args.cert, args.publish), build, "fnpack-" + arch, cwd=rawdir)
@@ -533,8 +586,8 @@ def main():
                             else supplement_unsigned(rawfiles[0], stage, candidate, package_module, args.publish))
             save(build / ("raw-fnpack-" + arch + ".json"), supplemental)
             certificate_flags = ["--expected-certificate", args.cert] if args.release and args.cert else []
-            run([sys.executable, "-I", "-B", ROOT / "scripts/check-package.py", "--stage", stage, "--arch", arch, "--package", candidate, "--report", build / ("package-" + arch + ".json")] + support_flags + mode_flags + certificate_flags, build, "package-check-" + arch)
-            official_gate(stage, candidate, arch, build, "package-official-" + arch, args.checker)
+            run([sys.executable, "-I", "-B", ROOT / "scripts/check-package.py", "--stage", stage, "--arch", arch, "--package", candidate, "--report", build / ("package-" + arch + ".json")] + support_flags + mode_flags + source_flags + certificate_flags, build, "package-check-" + arch)
+            official_gate(stage, candidate, arch, build, "package-official-" + arch, checker)
             item = json.loads((build / ("package-" + arch + ".json")).read_text())
             item["rawFnpack"] = supplemental
             report["packages"].append(item)

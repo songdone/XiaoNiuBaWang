@@ -153,7 +153,7 @@ def check_source_zip(data):
         return {"sha256": sha(data), "treeSHA256": record["treeSHA256"], "buildId": record["buildId"], "version": record["version"], "files": len(files)}
 
 
-def check_stage(stage, arch, without_support=False):
+def check_stage(stage, arch, without_support=False, external_source=False, source_zip=None):
     stage = Path(stage)
     manifest((stage / "manifest").read_text(), arch)
     if json.loads((stage / "config/privilege").read_text()) != {"defaults": {"run-as": "package"}, "username": "xiaoniubawang", "groupname": "xiaoniubawang"}:
@@ -222,7 +222,18 @@ def check_stage(stage, arch, without_support=False):
             raise ValueError(f"Private developer path in runtime asset: {relative}")
     if not (web / "LICENSES.txt").is_file() or not (web / "licenses/application-GPL-3.0.txt").is_file():
         raise ValueError("Missing full application/dependency licenses")
-    source = check_source_zip((web / "source/source.zip").read_bytes())
+    if external_source:
+        offer_path = web / "source/SOURCE-OFFER.json"
+        if not offer_path.is_file() or (web / "source/source.zip").exists():
+            raise ValueError("External-source stage must contain source/SOURCE-OFFER.json without embedded source.zip")
+        if not source_zip or not Path(source_zip).is_file():
+            raise ValueError("External-source inspection requires --source-zip pointing to the companion archive")
+        offer = json.loads(offer_path.read_text(encoding="utf-8"))
+        source = check_source_zip(Path(source_zip).read_bytes())
+        if offer.get("sha256") != source["sha256"] or offer.get("treeSHA256") != source["treeSHA256"] or offer.get("version") != source["version"] or offer.get("buildId") != source["buildId"]:
+            raise ValueError("External source offer does not match verified companion source archive")
+    else:
+        source = check_source_zip((web / "source/source.zip").read_bytes())
     if source["version"] != json.loads((ROOT / "branding/brand.json").read_text())["version"]:
         raise ValueError("Staged source version differs from application branding")
     return {"elf": elves, "source": source, "support": support, "catalogLoaded": bool(catalog), "icons": "approved exact RGBA 256/512", "lifecycle": "complete executable hooks"}
@@ -275,14 +286,14 @@ def release_signature(package, stage, expected_certificate=None):
         return verified
 
 
-def check_package(package, stage, arch, without_support=False, release=False, expected_certificate=None, publish=False):
+def check_package(package, stage, arch, without_support=False, release=False, expected_certificate=None, publish=False, external_source=False, source_zip=None):
     if publish and (release or without_support):
         raise ValueError("Ordinary publication candidates require approved support and cannot also claim signing")
     if release and without_support:
         raise ValueError("Release requires both approved support originals")
     signing = release_signature(package, stage, expected_certificate) if release else None
     stage, package = Path(stage), Path(package)
-    report = check_stage(stage, arch, without_support)
+    report = check_stage(stage, arch, without_support, external_source, source_zip)
     with tarfile.open(package, "r:*") as outer:
         members = inventory(outer)
         values = manifest(read(outer, members, "manifest").decode(), arch)
@@ -346,6 +357,8 @@ if __name__ == "__main__":
     mode.add_argument("--publish", action="store_true", help="ordinary unsigned official package inspection, not store approval")
     mode.add_argument("--nosign", action="store_true", help="unsigned local-test inspection, never verified signed output")
     parser.add_argument("--expected-certificate", type=Path, help="independently selected existing developer public certificate for opt-in --release; no default lookup")
+    parser.add_argument("--external-source", action="store_true", help="validate slim external-source staging using companion --source-zip")
+    parser.add_argument("--source-zip", type=Path, help="companion corresponding-source ZIP for --external-source validation")
     args = parser.parse_args()
     if (args.release or args.publish) and args.without_support:
         parser.error("Publication candidates cannot omit either approved support original")
@@ -353,7 +366,9 @@ if __name__ == "__main__":
         parser.error("--expected-certificate is only used by opt-in --release")
     if args.release and not args.package:
         parser.error("--release requires the actual signed package")
-    result = check_package(args.package, args.stage, args.arch, args.without_support, args.release, args.expected_certificate, args.publish) if args.package else check_stage(args.stage, args.arch, args.without_support)
+    if args.external_source and not args.source_zip:
+        parser.error("--external-source requires --source-zip")
+    result = check_package(args.package, args.stage, args.arch, args.without_support, args.release, args.expected_certificate, args.publish, args.external_source, args.source_zip) if args.package else check_stage(args.stage, args.arch, args.without_support, args.external_source, args.source_zip)
     text = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.report:
         with args.report.open("x") as stream:

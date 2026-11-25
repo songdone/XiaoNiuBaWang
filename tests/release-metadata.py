@@ -14,7 +14,7 @@ import sys
 import unittest
 
 ROOT = Path(sys.argv.pop(1)).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 GAME_VERSIONS = {
     "table-tennis": "1.0", "lan-master": "1.09", "lawn-mower": "1.12",
     "void-lancer": "1.0.0", "cargo-shift": "0.1.0", "thwaite": "0.04", "croom": "0.02a",

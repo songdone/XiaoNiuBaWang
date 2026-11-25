@@ -31,6 +31,10 @@
 *.fpk
 *.log
 
+# Upstream diagnostic dotfiles excluded from clean history.
+/emulator/diagnostics/keytest/upstream/.gitignore
+/emulator/diagnostics/keytest/upstream/.gitmodules
+
 # Credentials and local environment files never belong in the repository.
 .env
 .env.*

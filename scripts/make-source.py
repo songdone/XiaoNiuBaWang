@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,25 @@ EXCLUDE = {"node_modules", "dist", "build", "artifacts", "test-results", "playwr
 ROOTS = ("cmd", "internal", "web", "branding", "scripts", "packaging", "emulator", "third_party", "tests", "assets/brand", "docs", "distribution")
 PRIVATE = re.compile(rb"/Users/[A-Za-z0-9][^/\s\"'<>]+/|/home/[A-Za-z0-9][^/\s\"'<>]+/")
 CORE_SOURCE_SHA256 = "a5df940e9fff72a6daee22d898e2dda5a5a9305588e172eb37c53c07f5cd7821"
+PRECOMPRESSED_SUFFIXES = frozenset({".zip", ".gz", ".tgz", ".png", ".jpg", ".jpeg", ".webp", ".br", ".xz"})
+
+
+def resolve_module_cache(go_bin=None):
+    env_cache = os.environ.get("GOMODCACHE")
+    if env_cache:
+        candidate = Path(env_cache).expanduser() / "cache/download"
+        if candidate.is_dir():
+            return candidate
+    go_cmd = str(go_bin) if go_bin else "go"
+    try:
+        out = subprocess.check_output([go_cmd, "env", "GOMODCACHE"], text=True, stderr=subprocess.DEVNULL).strip()
+        if out:
+            candidate = Path(out).expanduser() / "cache/download"
+            if candidate.is_dir():
+                return candidate
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return Path.home() / "go/pkg/mod/cache/download"
 
 
 def sha(data):
@@ -69,12 +89,12 @@ def add_file(archive, name, data, executable=False):
     if path.is_absolute() or ".." in path.parts or "\\" in name:
         raise ValueError("Unsafe source archive path")
     info = zipfile.ZipInfo(name, (2026, 11, 21, 0, 0, 0))
-    info.compress_type = zipfile.ZIP_DEFLATED
+    info.compress_type = zipfile.ZIP_STORED if path.suffix.lower() in PRECOMPRESSED_SUFFIXES else zipfile.ZIP_DEFLATED
     info.external_attr = (0o100755 if executable else 0o100644) << 16
     archive.writestr(info, data)
 
 
-def make(output, build_id, notices, core_source):
+def make(output, build_id, notices, core_source, go_bin=None):
     output = Path(output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     before = files_manifest()
@@ -89,8 +109,8 @@ def make(output, build_id, notices, core_source):
     dep_records = json.loads((Path(notices) / "dependency-notices.json").read_text())["records"]
     # The upstream module ZIPs are immutable pinned corresponding source, not
     # installed executables. They are read only; never execute their contents.
-    module_cache = Path.home() / "go/pkg/mod/cache/download"
-    with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+    module_cache = resolve_module_cache(go_bin)
+    with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for source in selected_files():
             name = source.relative_to(ROOT).as_posix()
             data = source.read_bytes()
@@ -141,5 +161,6 @@ if __name__ == "__main__":
     if not default_core_source.is_file():
         default_core_source = ROOT / "distribution/core-corresponding-source.tar.gz"
     parser.add_argument("--core-source", type=Path, default=default_core_source)
+    parser.add_argument("--go", default=os.environ.get("GO_BINARY"))
     args = parser.parse_args()
-    make(args.output, args.build_id, args.notices, args.core_source)
+    make(args.output, args.build_id, args.notices, args.core_source, args.go)
