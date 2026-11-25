@@ -62,7 +62,7 @@ func syncDir(root *os.Root) error {
 
 func blobKey(key string) bool {
 	kind, id, ok := strings.Cut(key, "-")
-	return ok && (kind == "rom" || kind == "save") && hexToken(id, 32)
+	return ok && (kind == "rom" || kind == "save" || kind == "cover" || kind == "thumb") && hexToken(id, 32)
 }
 
 type cancellableReader struct {
@@ -80,7 +80,7 @@ func (r cancellableReader) Read(p []byte) (int, error) {
 // WriteBlob uses a new exclusive file for every write. Metadata is published only
 // after the file and its directory are durable; no committed file is overwritten.
 func (s *Store) WriteBlob(ctx context.Context, user fnos.User, kind string, r io.Reader, limit int64) (blob Blob, err error) {
-	if (kind != "rom" && kind != "save") || limit <= 0 || r == nil {
+	if (kind != "rom" && kind != "save" && kind != "cover" && kind != "thumb") || limit <= 0 || r == nil {
 		return Blob{}, ErrInvalid
 	}
 	root, err := s.userRoot(user, true)

@@ -2,6 +2,7 @@
 package saves
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -14,9 +15,25 @@ import (
 )
 
 const (
-	MaxSRAM  = int64(1 << 20)
-	MaxState = int64(16 << 20)
+	MaxSRAM      = int64(1 << 20)
+	MaxState     = int64(16 << 20)
+	MaxThumbSize = int64(256 << 10)
 )
+
+var ErrInvalidThumb = errors.New("invalid save thumbnail image")
+
+func detectThumbImageType(header []byte) string {
+	switch {
+	case len(header) >= 8 && bytes.Equal(header[:8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}):
+		return "image/png"
+	case len(header) >= 3 && header[0] == 0xff && header[1] == 0xd8 && header[2] == 0xff:
+		return "image/jpeg"
+	case len(header) >= 12 && bytes.Equal(header[:4], []byte("RIFF")) && bytes.Equal(header[8:12], []byte("WEBP")):
+		return "image/webp"
+	default:
+		return ""
+	}
+}
 
 type Service struct {
 	st  *store.Store
@@ -154,10 +171,60 @@ func (s *Service) Update(ctx context.Context, user fnos.User, id, expected strin
 func (s *Service) Delete(ctx context.Context, user fnos.User, id, expected string) error {
 	s.st.BlobsMu.Lock()
 	defer s.st.BlobsMu.Unlock()
-	key, err := s.st.DeleteSave(ctx, user, id, expected)
+	keys, err := s.st.DeleteSave(ctx, user, id, expected)
 	if err != nil {
 		return err
 	}
-	_ = s.st.RemoveBlob(user, key)
+	for _, key := range keys {
+		_ = s.st.RemoveBlob(user, key)
+	}
 	return nil
+}
+
+func (s *Service) SetThumb(ctx context.Context, user fnos.User, saveID string, data []byte) (store.Save, error) {
+	if len(data) == 0 {
+		return store.Save{}, ErrInvalidThumb
+	}
+	if int64(len(data)) > MaxThumbSize {
+		return store.Save{}, store.ErrTooLarge
+	}
+	contentType := detectThumbImageType(data)
+	if contentType == "" {
+		return store.Save{}, ErrInvalidThumb
+	}
+	if _, err := s.st.Save(ctx, user, saveID); err != nil {
+		return store.Save{}, err
+	}
+	blob, err := s.st.WriteBlob(ctx, user, "thumb", bytes.NewReader(data), MaxThumbSize)
+	if err != nil {
+		return store.Save{}, err
+	}
+	s.st.BlobsMu.Lock()
+	updated, previous, err := s.st.SetSaveThumb(ctx, user, saveID, blob, contentType)
+	s.st.BlobsMu.Unlock()
+	if err != nil {
+		_ = s.st.RemoveBlob(user, blob.Key)
+		return store.Save{}, err
+	}
+	if previous != "" && previous != blob.Key {
+		_ = s.st.RemoveBlob(user, previous)
+	}
+	return updated, nil
+}
+
+func (s *Service) OpenThumb(ctx context.Context, user fnos.User, saveID string) (store.CoverRecord, *os.File, error) {
+	s.st.BlobsMu.RLock()
+	defer s.st.BlobsMu.RUnlock()
+	if _, err := s.st.Save(ctx, user, saveID); err != nil {
+		return store.CoverRecord{}, nil, err
+	}
+	rec, err := s.st.GetSaveThumb(ctx, user, saveID)
+	if err != nil {
+		return store.CoverRecord{}, nil, err
+	}
+	f, err := s.st.OpenBlob(ctx, user, rec.Blob)
+	if err != nil {
+		return store.CoverRecord{}, nil, errors.Join(store.ErrCorrupt, err)
+	}
+	return rec, f, nil
 }

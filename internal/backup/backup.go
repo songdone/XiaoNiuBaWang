@@ -17,12 +17,16 @@ import (
 const (
 	Schema                 = "xiaoniubawang.user-backup"
 	Version                = 1
-	MaxMembers             = 1024
-	MaxTotalBytes    int64 = 128 << 20
-	MaxArchiveBytes  int64 = 144 << 20
-	MaxManifestBytes int64 = 2 << 20
+	MaxMembers             = 4096
+	MaxTotalBytes    int64 = 512 << 20
+	MaxArchiveBytes  int64 = 544 << 20
+	MaxManifestBytes int64 = 8 << 20
 	MaxSettingsBytes int64 = 256 << 10
 )
+
+type ExportOptions struct {
+	IncludeROMs bool
+}
 
 var ErrInvalid = errors.New("备份无效或版本不受支持")
 var ErrLimit = errors.New("备份超过大小或成员数量限制")
@@ -69,6 +73,7 @@ type Game struct {
 	LastPlayedAt string `json:"lastPlayedAt,omitempty"`
 	PlayCount    int64  `json:"playCount"`
 	Member       string `json:"member,omitempty"`
+	CoverMember  string `json:"coverMember,omitempty"`
 }
 type Save struct {
 	ID          string `json:"id"`
@@ -81,6 +86,7 @@ type Save struct {
 	SHA256      string `json:"sha256"`
 	Size        int64  `json:"size"`
 	Member      string `json:"member"`
+	ThumbMember string `json:"thumbMember,omitempty"`
 }
 type Manifest struct {
 	Schema    string   `json:"schema"`
@@ -100,8 +106,19 @@ type RestoreResult struct {
 	ImportedGames    int        `json:"importedGames"`
 	ExistingGames    int        `json:"existingGames"`
 	RestoredSaves    int        `json:"restoredSaves"`
+	RestoredCovers   int        `json:"restoredCovers,omitempty"`
 	Conflicts        []Conflict `json:"conflicts"`
 	SettingsRestored bool       `json:"settingsRestored"`
+}
+
+type coverAccess interface {
+	OpenCustomCover(context.Context, fnos.User, string) (store.CoverRecord, *os.File, error)
+	SetCover(context.Context, fnos.User, string, []byte) (store.Game, error)
+}
+
+type thumbAccess interface {
+	OpenThumb(context.Context, fnos.User, string) (store.CoverRecord, *os.File, error)
+	SetThumb(context.Context, fnos.User, string, []byte) (store.Save, error)
 }
 
 type cancelReader struct {

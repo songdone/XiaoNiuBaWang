@@ -119,7 +119,16 @@ func TestRealExportRestoreRoundTripAndUserIsolation(t *testing.T) {
 	if len(v.manifest.Games) != 1 || len(v.manifest.Saves) != 2 || v.manifest.Games[0].LastPlayedAt == "" || v.manifest.Games[0].PlayCount != 1 {
 		t.Fatalf("manifest %+v", v.manifest)
 	}
-	for name, b := range v.data {
+	for name := range v.declared {
+		rc, err := v.openMember(ctx, name)
+		if err != nil {
+			t.Fatalf("open %s: %v", name, err)
+		}
+		b, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
 		if bytes.Contains(b, []byte("other-user-secret")) {
 			t.Fatalf("cross-user secret in %s", name)
 		}
@@ -570,5 +579,133 @@ func TestCancellationKeepsCommittedAdditionsAndRetryCompletes(t *testing.T) {
 	}
 	if _, err = dest.backup.Restore(cancelled, owner, bytes.NewReader(data), int64(len(data))); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled restore %v", err)
+	}
+}
+
+func TestSavesOnlyBackupExportAndRestore(t *testing.T) {
+	ctx := context.Background()
+	source := backend(t)
+	original, state := seed(t, source, owner)
+	f, size, err := source.backup.ExportToFile(ctx, owner, ExportOptions{IncludeROMs: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		name := f.Name()
+		_ = f.Close()
+		_ = os.Remove(name)
+	}()
+	archiveBytes, err := io.ReadAll(f)
+	if err != nil || int64(len(archiveBytes)) != size {
+		t.Fatalf("read temp backup: len=%d size=%d err=%v", len(archiveBytes), size, err)
+	}
+	// Verify no roms/* payload was written to the lightweight archive.
+	zr, err := zip.NewReader(bytes.NewReader(archiveBytes), size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range zr.File {
+		if strings.HasPrefix(entry.Name, "roms/") {
+			t.Fatalf("saves-only backup unexpectedly included ROM: %s", entry.Name)
+		}
+	}
+	// Restoring onto an empty destination records a missing-ROM conflict cleanly.
+	emptyDest := backend(t)
+	missingOut, err := emptyDest.backup.Restore(ctx, owner, bytes.NewReader(archiveBytes), size)
+	if err != nil || missingOut.ImportedGames != 0 || missingOut.RestoredSaves != 0 || !missingOut.SettingsRestored || len(missingOut.Conflicts) == 0 {
+		t.Fatalf("empty dest saves-only restore: %+v err=%v", missingOut, err)
+	}
+	// Restoring onto a destination that already has the ROM restores saves, favorite, activity and settings.
+	dest := backend(t)
+	if _, err := dest.lib.Import(ctx, owner, []library.Upload{{Filename: "fixture.nes", Title: "已有卡带", Reader: bytes.NewReader(rom())}}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := dest.backup.Restore(ctx, owner, bytes.NewReader(archiveBytes), size)
+	if err != nil || out.ImportedGames != 0 || out.ExistingGames != 1 || out.RestoredSaves != 2 || !out.SettingsRestored || len(out.Conflicts) != 0 {
+		t.Fatalf("matched dest saves-only restore: %+v err=%v", out, err)
+	}
+	games, err := dest.lib.List(ctx, owner)
+	if err != nil || len(games) != 1 || !games[0].Favorite || games[0].PlayCount != original.PlayCount {
+		t.Fatalf("matched dest game metadata: %+v err=%v", games, err)
+	}
+	slots, err := dest.sv.List(ctx, owner, games[0].ID)
+	if err != nil || len(slots) != 2 {
+		t.Fatalf("matched dest saves: %+v err=%v", slots, err)
+	}
+	for _, slot := range slots {
+		if slot.Kind == "state" {
+			_, sf, err := dest.sv.Open(ctx, owner, slot.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, _ := io.ReadAll(sf)
+			_ = sf.Close()
+			if !bytes.Equal(got, state) {
+				t.Fatal("restored state mismatch")
+			}
+		}
+	}
+}
+
+func TestBackupRestoreCoversAndSaveThumbs(t *testing.T) {
+	ctx := context.Background()
+	owner := fnos.User("uid-1042")
+	source := backend(t)
+	imported, err := source.lib.Import(ctx, owner, []library.Upload{{Filename: "cover-test.nes", Title: "带封面卡带", Reader: bytes.NewReader(rom())}})
+	if err != nil || len(imported) != 1 {
+		t.Fatalf("import %+v %v", imported, err)
+	}
+	coverPNG := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 1, 2, 3, 4, 'I', 'E', 'N', 'D'}
+	thumbPNG := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 5, 6, 7, 8, 'I', 'E', 'N', 'D'}
+	if _, err := source.lib.SetCover(ctx, owner, imported[0].ID, coverPNG); err != nil {
+		t.Fatalf("set cover: %v", err)
+	}
+	state := []byte("state-with-thumb")
+	slot, err := source.sv.Create(ctx, owner, saves.Input{GameID: imported[0].ID, Kind: "state", Slot: 2, Core: "fceumm", CoreVersion: "1.0", ROMSHA256: imported[0].SHA256, SHA256: digest(state)}, bytes.NewReader(state))
+	if err != nil {
+		t.Fatalf("create save: %v", err)
+	}
+	if _, err := source.sv.SetThumb(ctx, owner, slot.ID, thumbPNG); err != nil {
+		t.Fatalf("set thumb: %v", err)
+	}
+
+	archive := exported(t, source, owner)
+	dest := backend(t)
+	out, err := dest.backup.Restore(ctx, owner, bytes.NewReader(archive), int64(len(archive)))
+	if err != nil || out.ImportedGames != 1 || out.RestoredSaves != 1 || out.RestoredCovers != 1 {
+		t.Fatalf("restore %+v err=%v", out, err)
+	}
+	games, err := dest.lib.List(ctx, owner)
+	if err != nil || len(games) != 1 || games[0].CoverURL == "" {
+		t.Fatalf("expected restored coverUrl: %+v err=%v", games, err)
+	}
+	_, cf, err := dest.lib.OpenCustomCover(ctx, owner, games[0].ID)
+	if err != nil {
+		t.Fatalf("open restored cover: %v", err)
+	}
+	gotCover, _ := io.ReadAll(cf)
+	_ = cf.Close()
+	if !bytes.Equal(gotCover, coverPNG) {
+		t.Fatal("restored cover bytes mismatch")
+	}
+
+	slots, err := dest.sv.List(ctx, owner, games[0].ID)
+	if err != nil || len(slots) != 1 || slots[0].ThumbURL == "" {
+		t.Fatalf("expected restored save thumbUrl: %+v err=%v", slots, err)
+	}
+	_, tf, err := dest.sv.OpenThumb(ctx, owner, slots[0].ID)
+	if err != nil {
+		t.Fatalf("open restored thumb: %v", err)
+	}
+	gotThumb, _ := io.ReadAll(tf)
+	_ = tf.Close()
+	if !bytes.Equal(gotThumb, thumbPNG) {
+		t.Fatal("restored thumb bytes mismatch")
+	}
+
+	// Second restore preserves existing custom cover without overwriting.
+	out2, err := dest.backup.Restore(ctx, owner, bytes.NewReader(archive), int64(len(archive)))
+	if err != nil || out2.RestoredCovers != 0 {
+		t.Fatalf("expected second restore to preserve existing cover, got %+v err=%v", out2, err)
 	}
 }

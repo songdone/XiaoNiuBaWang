@@ -20,6 +20,9 @@ type saveResponse struct {
 }
 
 func (h *Handler) saveView(slot store.Save) saveResponse {
+	if slot.ThumbURL != "" {
+		slot.ThumbURL = h.prefix() + slot.ThumbURL
+	}
 	return saveResponse{slot, h.prefix() + "/api/saves/" + slot.ID}
 }
 
@@ -215,4 +218,82 @@ func (h *Handler) getSave(w http.ResponseWriter, r *http.Request, user fnos.User
 	w.Header().Set("X-XNBW-Core-Version", slot.CoreVersion)
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeContent(w, r, "snapshot.bin", time.Time{}, f)
+}
+
+func (h *Handler) saveThumb(w http.ResponseWriter, r *http.Request, user fnos.User, id string) {
+	if !store.ValidID(id) {
+		h.fail(w, r, store.ErrInvalid)
+		return
+	}
+	if !allow(w, r, http.MethodGet, http.MethodHead, http.MethodPut) {
+		return
+	}
+	if r.Method == http.MethodPut {
+		if !h.uploading(w, r) {
+			return
+		}
+		defer func() { <-h.uploads }()
+		var data []byte
+		var err error
+		if strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+			m, err := multipartBody(w, r, saves.MaxThumbSize+(64<<10))
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			for {
+				p, e := m.NextRawPart()
+				if e == io.EOF {
+					break
+				}
+				if e != nil {
+					h.fail(w, r, multipartError(e))
+					return
+				}
+				field, _, file, e := partInfo(p)
+				if e != nil {
+					h.fail(w, r, e)
+					return
+				}
+				if file && field == "file" && data == nil {
+					data, err = readPart(p, saves.MaxThumbSize)
+					if err != nil {
+						h.fail(w, r, err)
+						return
+					}
+				} else {
+					h.fail(w, r, store.ErrInvalid)
+					return
+				}
+			}
+		} else {
+			r.Body = http.MaxBytesReader(w, r.Body, saves.MaxThumbSize+1)
+			data, err = io.ReadAll(io.LimitReader(r.Body, saves.MaxThumbSize+1))
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			if int64(len(data)) > saves.MaxThumbSize {
+				h.fail(w, r, store.ErrTooLarge)
+				return
+			}
+		}
+		slot, err := h.saves.SetThumb(r.Context(), user, id, data)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, h.saveView(slot))
+		return
+	}
+	rec, f, err := h.saves.OpenThumb(r.Context(), user, id)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", rec.ContentType)
+	w.Header().Set("ETag", `"`+rec.Blob.SHA256+`"`)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	http.ServeContent(w, r, "thumb", time.Time{}, f)
 }

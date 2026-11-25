@@ -3,6 +3,8 @@ package fnos
 import (
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -128,5 +130,45 @@ func TestListenGatewayRejectsUnsafePaths(t *testing.T) {
 			cleanup()
 			t.Fatalf("non-ACL writable directory accepted: %o", mode)
 		}
+	}
+}
+
+func TestGatewaySameOriginReverseProxy(t *testing.T) {
+	auth, err := NewAuth(Gateway, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeReq := func(host, origin, site, fwdHost string) *http.Request {
+		r := httptest.NewRequest("POST", "http://"+host+"/app/xiaoniubawang/api/settings", nil)
+		r.Host = host
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		if site != "" {
+			r.Header.Set("Sec-Fetch-Site", site)
+		}
+		if fwdHost != "" {
+			r.Header.Set("X-Forwarded-Host", fwdHost)
+		}
+		return r
+	}
+	// Direct match
+	if !auth.SameOrigin(makeReq("nas.local:5666", "http://nas.local:5666", "same-origin", "")) {
+		t.Fatal("direct same-origin rejected")
+	}
+	// Port-mapped TLS reverse proxy with matching hostname & Sec-Fetch-Site: same-origin
+	if !auth.SameOrigin(makeReq("fn.playsong.cn:5666", "https://fn.playsong.cn:8443", "same-origin", "")) {
+		t.Fatal("reverse-proxied same hostname with Sec-Fetch-Site rejected")
+	}
+	// Forwarded host match
+	if !auth.SameOrigin(makeReq("127.0.0.1:5666", "https://fn.playsong.cn", "same-origin", "fn.playsong.cn")) {
+		t.Fatal("X-Forwarded-Host match rejected")
+	}
+	// Cross-origin attacker still rejected
+	if auth.SameOrigin(makeReq("fn.playsong.cn:5666", "https://evil.test", "cross-site", "")) {
+		t.Fatal("cross-site origin accepted")
+	}
+	if auth.SameOrigin(makeReq("fn.playsong.cn:5666", "https://evil.test", "same-origin", "")) {
+		t.Fatal("mismatched host accepted")
 	}
 }

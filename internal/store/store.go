@@ -176,6 +176,31 @@ func openMetadata(root *os.Root, name string) (*os.File, error) {
 	return f, nil
 }
 
+const indexes = `
+CREATE TABLE IF NOT EXISTS covers (
+	owner TEXT NOT NULL,
+	game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+	blob TEXT NOT NULL,
+	sha256 TEXT NOT NULL,
+	size INTEGER NOT NULL,
+	content_type TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (owner, game_id)
+);
+CREATE TABLE IF NOT EXISTS save_thumbs (
+	owner TEXT NOT NULL,
+	save_id TEXT NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+	blob TEXT NOT NULL,
+	sha256 TEXT NOT NULL,
+	size INTEGER NOT NULL,
+	content_type TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (owner, save_id)
+);
+CREATE INDEX IF NOT EXISTS games_owner_avail_created ON games(owner,available,created_at DESC,id);
+CREATE INDEX IF NOT EXISTS activity_owner_last ON activity(owner,last_played_at DESC,game_id);
+CREATE INDEX IF NOT EXISTS saves_owner_game ON saves(owner,game_id);`
+
 func migrate(ctx context.Context, db *sql.DB) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -194,6 +219,9 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	case 1:
 	default:
 		return fmt.Errorf("unsupported database schema version %d", version)
+	}
+	if _, err := tx.ExecContext(ctx, indexes); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

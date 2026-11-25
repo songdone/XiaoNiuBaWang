@@ -21,10 +21,28 @@ import (
 )
 
 const MaxROMSize int64 = library.MaxROMSize
+const MaxZipROMSize int64 = library.MaxZipROMSize
 const MaxEntries = 4096
+const browseACLWorkers = 4
 
 type Importer interface {
 	Import(context.Context, fnos.User, []library.Upload) ([]store.Game, error)
+}
+
+type DetailedImporter interface {
+	ImportDetailed(context.Context, fnos.User, []library.Upload) ([]store.Game, int, int, error)
+}
+
+func isROMExt(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return ext == ".nes" || ext == ".zip"
+}
+
+func maxFileSizeFor(name string) int64 {
+	if strings.EqualFold(filepath.Ext(name), ".zip") {
+		return MaxZipROMSize
+	}
+	return MaxROMSize
 }
 
 type Root struct {
@@ -59,11 +77,12 @@ type Entry struct {
 	Size int64  `json:"size,omitempty"`
 }
 type Listing struct {
-	Path      string  `json:"path"`
-	Parent    *string `json:"parent"`
-	Root      string  `json:"root"`
-	Entries   []Entry `json:"entries"`
-	Truncated bool    `json:"truncated"`
+	Path         string  `json:"path"`
+	Parent       *string `json:"parent"`
+	Root         string  `json:"root"`
+	Entries      []Entry `json:"entries"`
+	Truncated    bool    `json:"truncated"`
+	SkippedLinks int     `json:"skippedLinks,omitempty"`
 }
 type Issue struct {
 	Path    string `json:"path"`
@@ -73,6 +92,7 @@ type Issue struct {
 type ImportResult struct {
 	Games    []store.Game `json:"games"`
 	Imported int          `json:"imported"`
+	Skipped  int          `json:"skipped,omitempty"`
 	Failed   []Issue      `json:"failed"`
 }
 
@@ -142,37 +162,70 @@ func lstatAt(dir *os.File, name string) (*unix.Stat_t, error) {
 	return &st, err
 }
 
-func (s *Service) authorized(ctx context.Context, user fnos.User, p string) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	if !validPath(p) {
-		return "", ErrPath
-	}
-	if s == nil || s.auth == nil {
-		return "", ErrUnavailable
-	}
-	roots, err := s.auth.Roots(ctx, user)
-	if err != nil {
-		return "", err
-	}
+func selectRoot(roots []string, p string) string {
 	var selected string
 	for _, root := range roots {
 		if validPath(root) && within(root, p) && len(root) > len(selected) {
 			selected = root
 		}
 	}
+	return selected
+}
+
+func (s *Service) authorizedRoots(ctx context.Context, user fnos.User, p string) ([]string, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	if !validPath(p) {
+		return nil, "", ErrPath
+	}
+	if s == nil || s.auth == nil {
+		return nil, "", ErrUnavailable
+	}
+	roots, err := s.auth.Roots(ctx, user)
+	if err != nil {
+		return nil, "", err
+	}
+	selected := selectRoot(roots, p)
 	if selected == "" {
-		return "", ErrDenied
+		return nil, "", ErrDenied
 	}
 	ok, err := s.auth.Readable(ctx, user, p)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	if !ok {
-		return "", ErrDenied
+		return nil, "", ErrDenied
 	}
-	return selected, nil
+	return roots, selected, nil
+}
+
+func (s *Service) authorized(ctx context.Context, user fnos.User, p string) (string, error) {
+	_, selected, err := s.authorizedRoots(ctx, user, p)
+	return selected, err
+}
+
+func (s *Service) authorizedWithin(ctx context.Context, user fnos.User, roots []string, p string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !validPath(p) {
+		return ErrPath
+	}
+	if s == nil || s.auth == nil {
+		return ErrUnavailable
+	}
+	if selectRoot(roots, p) == "" {
+		return ErrDenied
+	}
+	ok, err := s.auth.Readable(ctx, user, p)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrDenied
+	}
+	return nil
 }
 
 func (s *Service) Roots(ctx context.Context, user fnos.User) ([]Root, error) {
@@ -301,6 +354,13 @@ func (s *Service) browsePath(ctx context.Context, user fnos.User, p string) (Lis
 		names = names[:MaxEntries]
 		out.Truncated = true
 	}
+	type candidate struct {
+		name string
+		full string
+		kind string
+		size int64
+	}
+	candidates := make([]candidate, 0, len(names))
 	for _, name := range names {
 		if err := ctx.Err(); err != nil {
 			return Listing{}, err
@@ -313,21 +373,68 @@ func (s *Service) browsePath(ctx context.Context, user fnos.User, p string) (Lis
 		if e != nil {
 			continue
 		}
+		mode := info.Mode & unix.S_IFMT
 		kind := "directory"
-		if info.Mode&unix.S_IFMT != unix.S_IFDIR {
-			if info.Mode&unix.S_IFMT != unix.S_IFREG || info.Nlink != 1 || !strings.EqualFold(filepath.Ext(name), ".nes") {
+		if mode != unix.S_IFDIR {
+			if mode == unix.S_IFLNK {
+				out.SkippedLinks++
+				continue
+			}
+			if !isROMExt(name) {
+				continue
+			}
+			if mode != unix.S_IFREG || info.Nlink != 1 {
+				out.SkippedLinks++
 				continue
 			}
 			kind = "rom"
 		}
-		ok, e := s.auth.Readable(ctx, user, full)
-		if e != nil {
-			return Listing{}, e
+		candidates = append(candidates, candidate{name: name, full: full, kind: kind, size: info.Size})
+	}
+	if len(candidates) > 0 {
+		allowed := make([]bool, len(candidates))
+		checkCtx, cancelChecks := context.WithCancel(ctx)
+		defer cancelChecks()
+		jobs := make(chan int, len(candidates))
+		for i := range candidates {
+			jobs <- i
 		}
-		if !ok {
-			continue
+		close(jobs)
+		workers := min(browseACLWorkers, len(candidates))
+		var (
+			wg       sync.WaitGroup
+			errOnce  sync.Once
+			firstErr error
+		)
+		for range workers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for idx := range jobs {
+					if checkCtx.Err() != nil {
+						return
+					}
+					ok, e := s.auth.Readable(checkCtx, user, candidates[idx].full)
+					if e != nil {
+						errOnce.Do(func() {
+							firstErr = e
+							cancelChecks()
+						})
+						return
+					}
+					allowed[idx] = ok
+				}
+			}()
 		}
-		out.Entries = append(out.Entries, Entry{Name: name, Path: full, Kind: kind, Size: info.Size})
+		wg.Wait()
+		if firstErr != nil {
+			return Listing{}, firstErr
+		}
+		for i, c := range candidates {
+			if allowed[i] {
+				out.Entries = append(out.Entries, Entry{Name: c.name, Path: c.full, Kind: c.kind, Size: c.size})
+			}
+		}
 	}
 	// Do not return names after authorization was revoked during enumeration.
 	if _, err = s.authorized(ctx, user, p); err != nil {
@@ -349,10 +456,11 @@ func regular(info os.FileInfo) bool {
 }
 
 func (s *Service) openROM(ctx context.Context, user fnos.User, p string) (*os.File, error) {
-	if !strings.EqualFold(filepath.Ext(p), ".nes") {
+	if !isROMExt(p) {
 		return nil, ErrPath
 	}
-	if _, err := s.authorized(ctx, user, p); err != nil {
+	roots, _, err := s.authorizedRoots(ctx, user, p)
+	if err != nil {
 		return nil, err
 	}
 	r, err := pinDir(filepath.Dir(p))
@@ -360,21 +468,36 @@ func (s *Service) openROM(ctx context.Context, user fnos.User, p string) (*os.Fi
 		return nil, err
 	}
 	defer r.Close()
-	fd, err := unix.Openat(int(r.Fd()), filepath.Base(p), unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
+	return s.openROMInPinnedDir(ctx, user, r, filepath.Base(p), p, roots, false)
+}
+
+// openROMInPinnedDir opens a regular ROM file from an already-pinned directory
+// fd while preserving both pre-open and post-open ACL verification.
+func (s *Service) openROMInPinnedDir(ctx context.Context, user fnos.User, dir *os.File, name, full string, roots []string, checkPre bool) (*os.File, error) {
+	if !isROMExt(name) {
+		return nil, ErrPath
+	}
+	if checkPre {
+		if err := s.authorizedWithin(ctx, user, roots, full); err != nil {
+			return nil, err
+		}
+	}
+	fd, err := unix.Openat(int(dir.Fd()), name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, ErrPath
 	}
-	f := os.NewFile(uintptr(fd), p)
+	f := os.NewFile(uintptr(fd), full)
 	info, err := f.Stat()
 	if err != nil || !regular(info) {
 		f.Close()
 		return nil, ErrPath
 	}
-	if info.Size() <= 0 || info.Size() > MaxROMSize {
+	limit := maxFileSizeFor(name)
+	if info.Size() <= 0 || info.Size() > limit {
 		f.Close()
 		return nil, ErrLimit
 	}
-	if _, err = s.authorized(ctx, user, p); err != nil {
+	if err = s.authorizedWithin(ctx, user, roots, full); err != nil {
 		f.Close()
 		return nil, err
 	}
@@ -383,7 +506,8 @@ func (s *Service) openROM(ctx context.Context, user fnos.User, p string) (*os.Fi
 
 type contextReader struct {
 	ctx       context.Context
-	r         io.Reader
+	r         io.ReadSeeker
+	limit     int64
 	remaining int64
 }
 
@@ -402,16 +526,56 @@ func (r *contextReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (s *Service) importOne(ctx context.Context, user fnos.User, p string) ([]store.Game, error) {
+func (r *contextReader) Seek(offset int64, whence int) (int64, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	pos, err := r.r.Seek(offset, whence)
+	if err != nil {
+		return pos, err
+	}
+	if pos < 0 || pos > r.limit {
+		return pos, ErrLimit
+	}
+	r.remaining = r.limit - pos
+	return pos, nil
+}
+
+func (s *Service) importOpened(ctx context.Context, user fnos.User, name string, f *os.File) ([]store.Game, int, int, error) {
+	limit := maxFileSizeFor(name) + 1
+	upload := []library.Upload{{Filename: name, Reader: &contextReader{ctx: ctx, r: f, limit: limit, remaining: limit}}}
+	if detailed, ok := s.library.(DetailedImporter); ok {
+		return detailed.ImportDetailed(ctx, user, upload)
+	}
+	games, err := s.library.Import(ctx, user, upload)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return games, len(games), 0, nil
+}
+
+func (s *Service) importOne(ctx context.Context, user fnos.User, p string) ([]store.Game, int, int, error) {
 	if s.library == nil {
-		return nil, ErrUnavailable
+		return nil, 0, 0, ErrUnavailable
 	}
 	f, err := s.openROM(ctx, user, p)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	defer f.Close()
-	return s.library.Import(ctx, user, []library.Upload{{Filename: filepath.Base(p), Reader: &contextReader{ctx: ctx, r: f, remaining: MaxROMSize + 1}}})
+	return s.importOpened(ctx, user, filepath.Base(p), f)
+}
+
+func (s *Service) importOneInDir(ctx context.Context, user fnos.User, dir *os.File, name, full string, roots []string) ([]store.Game, int, int, error) {
+	if s.library == nil {
+		return nil, 0, 0, ErrUnavailable
+	}
+	f, err := s.openROMInPinnedDir(ctx, user, dir, name, full, roots, true)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer f.Close()
+	return s.importOpened(ctx, user, name, f)
 }
 
 func issue(path string, err error) Issue {
@@ -455,8 +619,9 @@ func (s *Service) Import(ctx context.Context, user fnos.User, paths []string) (I
 		seen[p] = true
 		physical, err := s.resolve(user, p)
 		var games []store.Game
+		var created, skipped int
 		if err == nil {
-			games, err = s.importOne(ctx, user, physical)
+			games, created, skipped, err = s.importOne(ctx, user, physical)
 		}
 		if err != nil {
 			if ctx.Err() != nil {
@@ -466,7 +631,8 @@ func (s *Service) Import(ctx context.Context, user fnos.User, paths []string) (I
 			continue
 		}
 		out.Games = append(out.Games, games...)
-		out.Imported += len(games)
+		out.Imported += created
+		out.Skipped += skipped
 	}
 	return out, nil
 }

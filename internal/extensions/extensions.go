@@ -3,7 +3,6 @@
 package extensions
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +11,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 
 	"xiaoniubawang/internal/backup"
@@ -221,20 +222,39 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request, user fnos.User)
 		if !allow(w, r, "GET", "HEAD") {
 			return true
 		}
+		opts := backup.ExportOptions{IncludeROMs: true}
+		filename := "xiaoniubawang-backup.zip"
+		if r.URL.RawQuery != "" {
+			mode, err := strictQuery(r, "mode")
+			if err != nil || (mode != "full" && mode != "saves") {
+				fail(w, r, store.ErrInvalid)
+				return true
+			}
+			if mode == "saves" {
+				opts.IncludeROMs = false
+				filename = "xiaoniubawang-saves-backup.zip"
+			}
+		}
 		if !h.acquire(w, r) {
 			return true
 		}
 		defer h.release()
-		b, err := h.backup.ExportBytes(r.Context(), user)
+		f, size, err := h.backup.ExportToFile(r.Context(), user, opts)
 		if err != nil {
 			fail(w, r, err)
 			return true
 		}
+		defer func() {
+			name := f.Name()
+			_ = f.Close()
+			_ = os.Remove(name)
+		}()
 		w.Header().Set("Content-Type", "application/zip")
-		w.Header().Set("Content-Disposition", `attachment; filename="xiaoniubawang-backup.zip"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 		w.Header().Set("Cache-Control", "private, no-store")
 		if r.Method != "HEAD" {
-			_, _ = io.Copy(w, bytes.NewReader(b))
+			_, _ = io.Copy(w, f)
 		}
 	case p == "/api/backup/restore":
 		if !allow(w, r, "POST") {
@@ -244,12 +264,17 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request, user fnos.User)
 			return true
 		}
 		defer h.release()
-		b, err := restoreUpload(w, r)
+		f, size, err := restoreUploadToFile(w, r)
 		if err != nil {
 			fail(w, r, err)
 			return true
 		}
-		out, err := h.backup.Restore(r.Context(), user, bytes.NewReader(b), int64(len(b)))
+		defer func() {
+			name := f.Name()
+			_ = f.Close()
+			_ = os.Remove(name)
+		}()
+		out, err := h.backup.Restore(r.Context(), user, f, size)
 		if err != nil {
 			fail(w, r, err)
 			return true
@@ -290,37 +315,72 @@ func (r requestReader) Read(p []byte) (int, error) {
 	return r.r.Read(p)
 }
 
-func restoreUpload(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+func restoreUploadToFile(w http.ResponseWriter, r *http.Request) (*os.File, int64, error) {
 	t, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || t != "multipart/form-data" || params["boundary"] == "" {
-		return nil, store.ErrInvalid
+		return nil, 0, store.ErrInvalid
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, backup.MaxArchiveBytes+(1<<20))
 	mr := multipart.NewReader(r.Body, params["boundary"])
-	var data []byte
+	var (
+		file *os.File
+		size int64
+	)
+	cleanup := func() {
+		if file != nil {
+			name := file.Name()
+			_ = file.Close()
+			_ = os.Remove(name)
+			file = nil
+		}
+	}
 	for i := 0; ; i++ {
 		p, err := mr.NextPart()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, store.ErrInvalid
+			cleanup()
+			var large *http.MaxBytesError
+			if errors.As(err, &large) {
+				return nil, 0, backup.ErrLimit
+			}
+			return nil, 0, store.ErrInvalid
 		}
 		if i != 0 || p.FormName() != "file" || p.FileName() == "" {
 			p.Close()
-			return nil, store.ErrInvalid
+			cleanup()
+			return nil, 0, store.ErrInvalid
 		}
-		data, err = io.ReadAll(io.LimitReader(requestReader{ctx: r.Context(), r: p}, backup.MaxArchiveBytes+1))
+		file, err = os.CreateTemp("", "xnbw-restore-*.zip")
+		if err != nil {
+			p.Close()
+			return nil, 0, err
+		}
+		if err = file.Chmod(0600); err != nil {
+			p.Close()
+			cleanup()
+			return nil, 0, err
+		}
+		n, err := io.Copy(file, io.LimitReader(requestReader{ctx: r.Context(), r: p}, backup.MaxArchiveBytes+1))
 		p.Close()
 		if err != nil {
-			return nil, err
+			cleanup()
+			return nil, 0, err
 		}
-		if int64(len(data)) > backup.MaxArchiveBytes {
-			return nil, backup.ErrLimit
+		if n > backup.MaxArchiveBytes {
+			cleanup()
+			return nil, 0, backup.ErrLimit
 		}
+		size = n
 	}
-	if len(data) == 0 {
-		return nil, store.ErrInvalid
+	if file == nil || size == 0 {
+		cleanup()
+		return nil, 0, store.ErrInvalid
 	}
-	return data, nil
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		cleanup()
+		return nil, 0, err
+	}
+	return file, size, nil
 }

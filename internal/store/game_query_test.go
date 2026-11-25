@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
-	"strings"
 	"testing"
 	"time"
 
@@ -195,7 +194,7 @@ func TestQueryGamesGlobalOrdering(t *testing.T) {
 	commitQueryFixture(t, s, queryUser, games)
 	want := append([]Game(nil), games...)
 	sort.Slice(want, func(i, j int) bool {
-		a, b := strings.ToLower(want[i].Title), strings.ToLower(want[j].Title)
+		a, b := titleSortKey(want[i].Title), titleSortKey(want[j].Title)
 		if a == b {
 			return want[i].ID < want[j].ID
 		}
@@ -207,6 +206,17 @@ func TestQueryGamesGlobalOrdering(t *testing.T) {
 	}
 	if !reflect.DeepEqual(queryIDs(got), queryIDs(want)) {
 		t.Fatalf("title global order: got=%v want=%v", queryIDs(got), queryIDs(want))
+	}
+	posA, posZ := -1, -1
+	for i, g := range got {
+		if g.Title == "阿" {
+			posA = i
+		} else if g.Title == "中" {
+			posZ = i
+		}
+	}
+	if posA < 0 || posZ < 0 || posA >= posZ {
+		t.Fatalf("Chinese Pinyin ordering expected 阿 before 中: posA=%d posZ=%d", posA, posZ)
 	}
 	added := mustQuery(t, s, queryUser, GameQuery{PageSize: 500})
 	if !reflect.DeepEqual(queryIDs(added.Games), queryIDs(games)) {

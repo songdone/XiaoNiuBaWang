@@ -257,7 +257,7 @@ func TestNASHTTPReferencesAndNoPhysicalPathLeak(t *testing.T) {
 			t.Fatal("job poll failed")
 		}
 	}
-	if job.Status != "completed" || job.Imported != 1 {
+	if job.Status != "completed" || job.Imported != 0 || job.Skipped != 1 {
 		t.Fatalf("job %+v", job)
 	}
 	w = direct(t, c.handler, "uid-1002", "DELETE", "/api/nas/scan/"+job.ID, nil, "")
@@ -458,7 +458,12 @@ func TestCancelledMultipartReadStops(t *testing.T) {
 	cancel()
 	r := httptest.NewRequest("POST", "http://localhost/api/backup/restore", bytes.NewReader(body)).WithContext(ctx)
 	r.Header.Set("Content-Type", ct)
-	_, err := restoreUpload(httptest.NewRecorder(), r)
+	f, _, err := restoreUploadToFile(httptest.NewRecorder(), r)
+	if f != nil {
+		name := f.Name()
+		_ = f.Close()
+		_ = os.Remove(name)
+	}
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled upload %v", err)
 	}

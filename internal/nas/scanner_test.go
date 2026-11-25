@@ -84,14 +84,18 @@ func TestScannerStreamsBeyondBrowseLimitWithRealROM(t *testing.T) {
 	}
 	scanner := NewScanner(service)
 	defer scanner.Close()
-	for range 2 {
+	for round := range 2 {
 		job, err := scanner.Start(ctx, testUser, roots[0].Path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		job = waitScan(t, scanner, job.ID)
-		if job.Status != "completed" || job.Visited != MaxEntries+130 || job.Discovered != 1 || job.Imported != 1 || job.Failed != 0 {
-			t.Fatalf("large directory scan: %+v", job)
+		wantImported, wantSkipped := 1, 0
+		if round == 1 {
+			wantImported, wantSkipped = 0, 1
+		}
+		if job.Status != "completed" || job.Visited != MaxEntries+130 || job.Discovered != 1 || job.Imported != wantImported || job.Skipped != wantSkipped || job.Failed != 0 {
+			t.Fatalf("large directory scan round=%d: %+v", round, job)
 		}
 	}
 	games, err := lib.List(ctx, testUser)

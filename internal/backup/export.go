@@ -7,17 +7,26 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
+	"os"
 	"strconv"
 	"time"
 
 	"xiaoniubawang/internal/fnos"
+	"xiaoniubawang/internal/store"
 )
 
 // Export writes a bounded self-contained ZIP, verifying the exact opened ROM and
 // save bytes against their metadata. Archive IDs are references, never paths to
 // app storage. Bundled ROMs stay in the catalog and are matched by digest later.
 func (s *Service) Export(ctx context.Context, user fnos.User, w io.Writer) error {
+	return s.ExportWithOptions(ctx, user, w, ExportOptions{IncludeROMs: true})
+}
+
+// ExportWithOptions writes either a full backup (with imported ROM payloads) or
+// a lightweight saves/settings/activity backup (IncludeROMs=false).
+func (s *Service) ExportWithOptions(ctx context.Context, user fnos.User, w io.Writer, opts ExportOptions) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -64,13 +73,15 @@ func (s *Service) Export(ctx context.Context, user fnos.User, w io.Writer) error
 	if err := write("settings.json", int64(len(settings)), "", bytes.NewBufferString(settings)); err != nil {
 		return err
 	}
+	covers, _ := s.library.(coverAccess)
+	thumbs, _ := s.saves.(thumbAccess)
 	roms := map[string]string{}
 	for _, g := range games {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		out := Game{ID: g.ID, Title: g.Title, Filename: g.Filename, SHA256: g.SHA256, Size: g.Size, Source: g.Source, Favorite: g.Favorite, LastPlayedAt: g.LastPlayedAt, PlayCount: g.PlayCount}
-		if g.Source == "imported" {
+		if g.Source == "imported" && opts.IncludeROMs {
 			member, exists := roms[g.SHA256]
 			if !exists {
 				member = "roms/" + g.SHA256 + ".nes"
@@ -91,6 +102,20 @@ func (s *Service) Export(ctx context.Context, user fnos.User, w io.Writer) error
 			}
 			out.Member = member
 		}
+		if g.Source == "imported" && covers != nil {
+			rec, cf, ce := covers.OpenCustomCover(ctx, user, g.ID)
+			if ce == nil {
+				coverMember := "covers/" + g.ID + ".bin"
+				we := write(coverMember, rec.Blob.Size, rec.Blob.SHA256, cf)
+				_ = cf.Close()
+				if we != nil {
+					return we
+				}
+				out.CoverMember = coverMember
+			} else if !errors.Is(ce, store.ErrNotFound) {
+				return ce
+			}
+		}
 		manifest.Games = append(manifest.Games, out)
 		slots, err := s.saves.List(ctx, user, g.ID)
 		if err != nil {
@@ -108,13 +133,28 @@ func (s *Service) Export(ctx context.Context, user fnos.User, w io.Writer) error
 				f.Close()
 				return ErrInvalid
 			}
-			member := "saves/" + strconv.Itoa(len(manifest.Saves)) + ".bin"
+			idxStr := strconv.Itoa(len(manifest.Saves))
+			member := "saves/" + idxStr + ".bin"
 			e = write(member, slot.Size, slot.SHA256, f)
 			f.Close()
 			if e != nil {
 				return e
 			}
-			manifest.Saves = append(manifest.Saves, Save{ID: slot.ID, GameID: slot.GameID, Kind: slot.Kind, Slot: slot.Slot, Core: slot.Core, CoreVersion: slot.CoreVersion, ROMSHA256: slot.ROMSHA256, SHA256: slot.SHA256, Size: slot.Size, Member: member})
+			var thumbMember string
+			if thumbs != nil {
+				trec, tf, te := thumbs.OpenThumb(ctx, user, slot.ID)
+				if te == nil {
+					thumbMember = "thumbs/" + idxStr + ".bin"
+					we := write(thumbMember, trec.Blob.Size, trec.Blob.SHA256, tf)
+					_ = tf.Close()
+					if we != nil {
+						return we
+					}
+				} else if !errors.Is(te, store.ErrNotFound) {
+					return te
+				}
+			}
+			manifest.Saves = append(manifest.Saves, Save{ID: slot.ID, GameID: slot.GameID, Kind: slot.Kind, Slot: slot.Slot, Core: slot.Core, CoreVersion: slot.CoreVersion, ROMSHA256: slot.ROMSHA256, SHA256: slot.SHA256, Size: slot.Size, Member: member, ThumbMember: thumbMember})
 		}
 	}
 	b, err := json.Marshal(manifest)
@@ -135,6 +175,39 @@ func (s *Service) Export(ctx context.Context, user fnos.User, w io.Writer) error
 		return err
 	}
 	return zw.Close()
+}
+
+// ExportToFile spools the validated ZIP into a private 0600 temp file under
+// $TMPDIR so large exports do not hold hundreds of megabytes in RAM.
+func (s *Service) ExportToFile(ctx context.Context, user fnos.User, opts ExportOptions) (*os.File, int64, error) {
+	f, err := os.CreateTemp("", "xnbw-backup-*.zip")
+	if err != nil {
+		return nil, 0, err
+	}
+	cleanup := func() {
+		name := f.Name()
+		_ = f.Close()
+		_ = os.Remove(name)
+	}
+	if err := f.Chmod(0600); err != nil {
+		cleanup()
+		return nil, 0, err
+	}
+	w := &limitedWriter{w: f, remaining: MaxArchiveBytes}
+	if err := s.ExportWithOptions(ctx, user, w, opts); err != nil {
+		cleanup()
+		return nil, 0, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		cleanup()
+		return nil, 0, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		cleanup()
+		return nil, 0, err
+	}
+	return f, info.Size(), nil
 }
 
 // ExportBytes bounds the response before headers are committed, so an invalid

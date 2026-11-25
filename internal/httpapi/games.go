@@ -15,8 +15,18 @@ import (
 )
 
 func (h *Handler) gameView(g store.Game) store.Game {
+	if g.CoverURL == "" && g.Source == "bundled" && h.web != nil {
+		if f, err := openAsset(h.web, "covers/"+g.ID+".png"); err == nil {
+			_ = f.Close()
+			g.CoverURL = "/covers/" + g.ID + ".png"
+		}
+	}
 	if g.CoverURL != "" {
-		g.CoverURL = h.prefix() + (&url.URL{Path: g.CoverURL}).EscapedPath()
+		if parsed, err := url.Parse(g.CoverURL); err == nil {
+			g.CoverURL = h.prefix() + (&url.URL{Path: parsed.Path, RawQuery: parsed.RawQuery}).String()
+		} else {
+			g.CoverURL = h.prefix() + (&url.URL{Path: g.CoverURL}).EscapedPath()
+		}
 	}
 	return g
 }
@@ -137,7 +147,7 @@ func (h *Handler) importGames(w http.ResponseWriter, r *http.Request, user fnos.
 		return
 	}
 	defer func() { <-h.uploads }()
-	m, err := multipartBody(w, r, library.MaxROMSize*library.MaxUploads+(128<<10))
+	m, err := multipartBody(w, r, library.MaxZipROMSize*library.MaxUploads+(128<<10))
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -160,7 +170,11 @@ func (h *Handler) importGames(w http.ResponseWriter, r *http.Request, user fnos.
 		}
 		switch {
 		case file && (field == "file" || field == "files") && len(uploads) < library.MaxUploads && library.SafeFilename(filename):
-			data, err := readPart(p, library.MaxROMSize)
+			limit := library.MaxROMSize
+			if strings.HasSuffix(strings.ToLower(filename), ".zip") {
+				limit = library.MaxZipROMSize
+			}
+			data, err := readPart(p, limit)
 			if err != nil {
 				h.fail(w, r, err)
 				return
@@ -211,6 +225,8 @@ func (h *Handler) game(w http.ResponseWriter, r *http.Request, user fnos.User, s
 			h.favorite(w, r, user, id)
 		case "launch":
 			h.launch(w, r, user, id)
+		case "cover":
+			h.cover(w, r, user, id)
 		default:
 			h.fail(w, r, store.ErrNotFound)
 		}
@@ -293,4 +309,86 @@ func (h *Handler) launch(w http.ResponseWriter, r *http.Request, user fnos.User,
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("ETag", `"`+g.SHA256+`"`)
 	http.ServeContent(w, r, "game.nes", time.Time{}, f)
+}
+
+func (h *Handler) cover(w http.ResponseWriter, r *http.Request, user fnos.User, id string) {
+	if !allow(w, r, http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete) {
+		return
+	}
+	switch r.Method {
+	case http.MethodPut:
+		if !h.uploading(w, r) {
+			return
+		}
+		defer func() { <-h.uploads }()
+		var data []byte
+		var err error
+		if strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+			m, err := multipartBody(w, r, library.MaxCoverSize+(64<<10))
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			for {
+				p, e := m.NextRawPart()
+				if e == io.EOF {
+					break
+				}
+				if e != nil {
+					h.fail(w, r, multipartError(e))
+					return
+				}
+				field, _, file, e := partInfo(p)
+				if e != nil {
+					h.fail(w, r, e)
+					return
+				}
+				if file && field == "file" && data == nil {
+					data, err = readPart(p, library.MaxCoverSize)
+					if err != nil {
+						h.fail(w, r, err)
+						return
+					}
+				} else {
+					h.fail(w, r, store.ErrInvalid)
+					return
+				}
+			}
+		} else {
+			r.Body = http.MaxBytesReader(w, r.Body, library.MaxCoverSize+1)
+			data, err = io.ReadAll(io.LimitReader(r.Body, library.MaxCoverSize+1))
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			if int64(len(data)) > library.MaxCoverSize {
+				h.fail(w, r, store.ErrTooLarge)
+				return
+			}
+		}
+		g, err := h.cfg.Library.SetCover(r.Context(), user, id, data)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, h.gameView(g))
+	case http.MethodDelete:
+		g, err := h.cfg.Library.DeleteCover(r.Context(), user, id)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, h.gameView(g))
+	default:
+		rec, f, err := h.cfg.Library.OpenCustomCover(r.Context(), user, id)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		defer f.Close()
+		w.Header().Set("Content-Type", rec.ContentType)
+		w.Header().Set("ETag", `"`+rec.Blob.SHA256+`"`)
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		http.ServeContent(w, r, "cover", time.Time{}, f)
+	}
 }

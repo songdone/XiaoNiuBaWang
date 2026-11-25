@@ -39,6 +39,8 @@ func (s *Service) Restore(ctx context.Context, user fnos.User, r io.ReaderAt, si
 		bySourceHash[g.Source+":"+g.SHA256] = g
 		byID[g.ID] = g
 	}
+	covers, _ := s.library.(coverAccess)
+	thumbs, _ := s.saves.(thumbAccess)
 	mapped := map[string]store.Game{}
 	conflict := func(kind, id, message string) { out.Conflicts = append(out.Conflicts, Conflict{kind, id, message}) }
 	for _, g := range v.manifest.Games {
@@ -54,8 +56,13 @@ func (s *Service) Restore(ctx context.Context, user fnos.User, r io.ReaderAt, si
 		}
 		if exists {
 			out.ExistingGames++
-		} else if g.Source == "imported" {
-			imported, err := s.library.Import(ctx, user, []library.Upload{{Filename: g.Filename, Title: g.Title, Reader: bytes.NewReader(v.data[g.Member])}})
+		} else if g.Source == "imported" && g.Member != "" {
+			rc, err := v.openMember(ctx, g.Member)
+			if err != nil {
+				return out, err
+			}
+			imported, err := s.library.Import(ctx, user, []library.Upload{{Filename: g.Filename, Title: g.Title, Reader: rc}})
+			_ = rc.Close()
 			if err != nil {
 				return out, err
 			}
@@ -65,6 +72,9 @@ func (s *Service) Restore(ctx context.Context, user fnos.User, r io.ReaderAt, si
 			current = imported[0]
 			bySourceHash[key] = current
 			out.ImportedGames++
+		} else if g.Source == "imported" {
+			conflict("game", g.ID, "此备份未包含卡带本体，请先导入对应卡带后再恢复其存档")
+			continue
 		} else {
 			conflict("game", g.ID, "当前游戏目录中没有此内置 ROM")
 			continue
@@ -84,6 +94,25 @@ func (s *Service) Restore(ctx context.Context, user fnos.User, r io.ReaderAt, si
 				}
 			} else {
 				conflict("activity", g.ID, "备份包含最近游玩记录，但当前服务暂不支持合并该记录")
+			}
+		}
+		if g.CoverMember != "" && current.Source == "imported" && current.CoverURL == "" && covers != nil {
+			rc, err := v.openMember(ctx, g.CoverMember)
+			if err != nil {
+				return out, err
+			}
+			coverBytes, rerr := io.ReadAll(io.LimitReader(rc, library.MaxCoverSize+1))
+			_ = rc.Close()
+			if rerr != nil {
+				return out, rerr
+			}
+			if updated, cerr := covers.SetCover(ctx, user, current.ID, coverBytes); cerr == nil {
+				current = updated
+				bySourceHash[key] = updated
+				mapped[g.ID] = updated
+				out.RestoredCovers++
+			} else {
+				conflict("cover", g.ID, "备份中的自定义封面格式无效，已跳过")
 			}
 		}
 	}
@@ -112,7 +141,12 @@ func (s *Service) Restore(ctx context.Context, user fnos.User, r io.ReaderAt, si
 			conflict("save", sv.ID, "存档槽位已存在，已保留原有存档")
 			continue
 		}
-		_, err := s.saves.Create(ctx, user, saves.Input{GameID: g.ID, Kind: sv.Kind, Slot: sv.Slot, Core: sv.Core, CoreVersion: sv.CoreVersion, ROMSHA256: sv.ROMSHA256, SHA256: sv.SHA256}, bytes.NewReader(v.data[sv.Member]))
+		rc, err := v.openMember(ctx, sv.Member)
+		if err != nil {
+			return out, err
+		}
+		created, err := s.saves.Create(ctx, user, saves.Input{GameID: g.ID, Kind: sv.Kind, Slot: sv.Slot, Core: sv.Core, CoreVersion: sv.CoreVersion, ROMSHA256: sv.ROMSHA256, SHA256: sv.SHA256}, rc)
+		_ = rc.Close()
 		if err != nil {
 			var c *store.SaveConflict
 			if errors.As(err, &c) {
@@ -121,6 +155,16 @@ func (s *Service) Restore(ctx context.Context, user fnos.User, r io.ReaderAt, si
 				continue
 			}
 			return out, err
+		}
+		if sv.ThumbMember != "" && thumbs != nil {
+			trc, terr := v.openMember(ctx, sv.ThumbMember)
+			if terr == nil {
+				tb, rerr := io.ReadAll(io.LimitReader(trc, saves.MaxThumbSize+1))
+				_ = trc.Close()
+				if rerr == nil && int64(len(tb)) <= saves.MaxThumbSize {
+					_, _ = thumbs.SetThumb(ctx, user, created.ID, tb)
+				}
+			}
 		}
 		occupied[g.ID][key] = true
 		out.RestoredSaves++

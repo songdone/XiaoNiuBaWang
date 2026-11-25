@@ -147,6 +147,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.saveCollection(w, r, user)
 	case len(parts) == 2 && parts[0] == "saves":
 		h.save(w, r, user, parts[1])
+	case len(parts) == 3 && parts[0] == "saves" && parts[2] == "thumb":
+		h.saveThumb(w, r, user, parts[1])
 	case p == "/api/settings":
 		h.settings(w, r, user)
 	case p == "/api/support-assets":
@@ -264,8 +266,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, r, status, map[string]any{"code": code, "message": "存档槽位已有其他版本，请刷新后重试。", "current": h.saveView(conflict.Current)})
 	case errors.Is(err, store.ErrTooLarge), errors.As(err, &tooLarge):
 		problem(w, r, http.StatusRequestEntityTooLarge, "file_too_large", "上传文件超过大小限制。")
-	case errors.Is(err, errMediaType), errors.Is(err, library.ErrInvalidROM):
-		problem(w, r, http.StatusUnsupportedMediaType, "unsupported_format", "请求类型或 NES 卡带格式无效。")
+	case errors.Is(err, errMediaType), errors.Is(err, library.ErrInvalidROM), errors.Is(err, library.ErrInvalidCover), errors.Is(err, saves.ErrInvalidThumb):
+		problem(w, r, http.StatusUnsupportedMediaType, "unsupported_format", "请求类型或文件格式无效。")
 	case errors.Is(err, store.ErrInvalid), errors.Is(err, io.ErrUnexpectedEOF):
 		problem(w, r, http.StatusBadRequest, "invalid_request", "请求字段无效，请检查后重试。")
 	case errors.Is(err, store.ErrIncompatible):

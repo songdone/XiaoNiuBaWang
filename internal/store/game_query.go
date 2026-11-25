@@ -24,6 +24,16 @@ func init() {
 		}
 		return strings.ToLower(text), nil
 	})
+	sqlite.MustRegisterDeterministicScalarFunction("xnbw_sort_key", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		if args[0] == nil {
+			return "", nil
+		}
+		text, ok := args[0].(string)
+		if !ok {
+			return nil, ErrInvalid
+		}
+		return titleSortKey(text), nil
+	})
 }
 
 type GameQuery struct {
@@ -123,7 +133,7 @@ func (s *Store) QueryGames(ctx context.Context, user fnos.User, query GameQuery)
 	order := ` ORDER BY g.created_at DESC,g.id`
 	switch q.Sort {
 	case "title":
-		order = ` ORDER BY xnbw_fold(g.title) COLLATE BINARY,g.id`
+		order = ` ORDER BY xnbw_sort_key(g.title) COLLATE BINARY,g.id`
 	case "recent":
 		order = recentGameOrder
 	}

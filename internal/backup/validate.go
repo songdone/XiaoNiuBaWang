@@ -22,8 +22,77 @@ import (
 
 type validated struct {
 	manifest Manifest
-	data     map[string][]byte
+	files    map[string]*zip.File
+	declared map[string]Member
 	settings map[string]json.RawMessage
+}
+
+func (v *validated) openMember(ctx context.Context, name string) (io.ReadCloser, error) {
+	f := v.files[name]
+	entry, ok := v.declared[name]
+	if f == nil || !ok {
+		return nil, ErrInvalid
+	}
+	rc, err := f.Open()
+	if err != nil {
+		return nil, ErrInvalid
+	}
+	return &boundedReadCloser{r: io.LimitReader(cancelReader{ctx, rc}, entry.Size), c: rc}, nil
+}
+
+type boundedReadCloser struct {
+	r io.Reader
+	c io.Closer
+}
+
+func (b *boundedReadCloser) Read(p []byte) (int, error) { return b.r.Read(p) }
+func (b *boundedReadCloser) Close() error               { return b.c.Close() }
+
+func verifyMemberStream(ctx context.Context, f *zip.File, entry Member, checkNESMagic bool) error {
+	if f.UncompressedSize64 != uint64(entry.Size) {
+		return ErrInvalid
+	}
+	rc, err := f.Open()
+	if err != nil {
+		return ErrInvalid
+	}
+	defer rc.Close()
+	r := io.LimitReader(cancelReader{ctx, rc}, entry.Size+1)
+	h := sha256.New()
+	var written int64
+	if checkNESMagic {
+		var hdr [16]byte
+		n, err := io.ReadFull(r, hdr[:])
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return ErrInvalid
+		}
+		if string(hdr[:4]) != "NES\x1a" {
+			return ErrInvalid
+		}
+		_, _ = h.Write(hdr[:n])
+		written += int64(n)
+	}
+	n, err := io.Copy(h, r)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return ErrInvalid
+	}
+	written += n
+	if written != entry.Size {
+		if written > entry.Size {
+			return ErrLimit
+		}
+		return ErrInvalid
+	}
+	if hex.EncodeToString(h.Sum(nil)) != entry.SHA256 {
+		return ErrInvalid
+	}
+	return nil
 }
 
 func memberName(name string) bool {
@@ -161,16 +230,28 @@ func validate(ctx context.Context, r io.ReaderAt, size int64) (validated, error)
 		}
 		switch g.Source {
 		case "imported":
-			if g.Member != "roms/"+g.SHA256+".nes" {
-				return out, ErrInvalid
-			}
-			entry, exists := declared[g.Member]
-			if !exists || entry.Size != g.Size || entry.SHA256 != g.SHA256 {
-				return out, ErrInvalid
-			}
-			refs[g.Member] = true
-		case "bundled":
 			if g.Member != "" {
+				if g.Member != "roms/"+g.SHA256+".nes" {
+					return out, ErrInvalid
+				}
+				entry, exists := declared[g.Member]
+				if !exists || entry.Size != g.Size || entry.SHA256 != g.SHA256 {
+					return out, ErrInvalid
+				}
+				refs[g.Member] = true
+			}
+			if g.CoverMember != "" {
+				if g.CoverMember != "covers/"+g.ID+".bin" {
+					return out, ErrInvalid
+				}
+				entry, exists := declared[g.CoverMember]
+				if !exists || entry.Size <= 0 || entry.Size > library.MaxCoverSize {
+					return out, ErrInvalid
+				}
+				refs[g.CoverMember] = true
+			}
+		case "bundled":
+			if g.Member != "" || g.CoverMember != "" {
 				return out, ErrInvalid
 			}
 		default:
@@ -207,31 +288,44 @@ func validate(ctx context.Context, r io.ReaderAt, size int64) (validated, error)
 		slots[key] = true
 		ids[sv.ID] = true
 		refs[sv.Member] = true
+		if sv.ThumbMember != "" {
+			if sv.ThumbMember != "thumbs/"+strconv.Itoa(i)+".bin" {
+				return out, ErrInvalid
+			}
+			tEntry, exists := declared[sv.ThumbMember]
+			if !exists || tEntry.Size <= 0 || tEntry.Size > saves.MaxThumbSize {
+				return out, ErrInvalid
+			}
+			refs[sv.ThumbMember] = true
+		}
 	}
 	if len(refs) != len(declared) {
 		return out, ErrInvalid
 	}
-	out.data = map[string][]byte{}
 	for name, entry := range declared {
 		if !refs[name] {
 			return out, ErrInvalid
 		}
-		b, err := readMember(ctx, files[name], entry.Size)
-		if err != nil {
+		if name == m.Settings {
+			b, err := readMember(ctx, files[name], entry.Size)
+			if err != nil {
+				return out, err
+			}
+			h := sha256.Sum256(b)
+			if hex.EncodeToString(h[:]) != entry.SHA256 {
+				return out, ErrInvalid
+			}
+			out.settings, err = object(b)
+			if err != nil {
+				return out, err
+			}
+			continue
+		}
+		if err := verifyMemberStream(ctx, files[name], entry, strings.HasPrefix(name, "roms/")); err != nil {
 			return out, err
 		}
-		h := sha256.Sum256(b)
-		if hex.EncodeToString(h[:]) != entry.SHA256 {
-			return out, ErrInvalid
-		}
-		if strings.HasPrefix(name, "roms/") && (len(b) < 16 || string(b[:4]) != "NES\x1a") {
-			return out, ErrInvalid
-		}
-		out.data[name] = b
 	}
-	out.settings, err = object(out.data[m.Settings])
-	if err != nil {
-		return out, err
-	}
+	out.files = files
+	out.declared = declared
 	return out, nil
 }

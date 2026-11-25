@@ -24,6 +24,7 @@ type Save struct {
 	ETag        string `json:"etag"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
+	ThumbURL    string `json:"thumbUrl,omitempty"`
 	BlobKey     string `json:"-"`
 }
 
@@ -37,18 +38,23 @@ type SaveConflict struct {
 
 func (*SaveConflict) Error() string { return "save slot conflict" }
 
-const selectSaves = `SELECT s.id,s.game_id,s.kind,s.slot,s.core,s.core_version,s.rom_sha256,s.sha256,s.size,s.version,s.blob,s.created_at,s.updated_at
+const selectSaves = `SELECT s.id,s.game_id,s.kind,s.slot,s.core,s.core_version,s.rom_sha256,s.sha256,s.size,s.version,s.blob,s.created_at,s.updated_at,
+ coalesce((SELECT t.sha256 FROM save_thumbs AS t WHERE t.owner=s.owner AND t.save_id=s.id),'')
  FROM saves AS s JOIN games AS g ON g.id=s.game_id AND g.sha256=s.rom_sha256
  WHERE s.owner=? AND g.available=1 AND (g.owner=s.owner OR g.owner='')`
 
 func scanSave(row interface{ Scan(...any) error }) (s Save, err error) {
+	var thumbSHA string
 	err = row.Scan(&s.ID, &s.GameID, &s.Kind, &s.Slot, &s.Core, &s.CoreVersion, &s.ROMSHA256, &s.SHA256,
-		&s.Size, &s.Version, &s.BlobKey, &s.CreatedAt, &s.UpdatedAt)
+		&s.Size, &s.Version, &s.BlobKey, &s.CreatedAt, &s.UpdatedAt, &thumbSHA)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Save{}, ErrNotFound
 	}
 	if err == nil {
 		s.ETag = `"` + s.ID + `-` + strconv.FormatInt(s.Version, 10) + `-` + s.SHA256 + `"`
+		if len(thumbSHA) >= 12 {
+			s.ThumbURL = "/api/saves/" + s.ID + "/thumb?v=" + thumbSHA[:12]
+		}
 	}
 	return s, err
 }
@@ -153,24 +159,82 @@ func (s *Store) SwapSave(ctx context.Context, user fnos.User, id, expected strin
 	return slot, old.BlobKey, nil
 }
 
-func (s *Store) DeleteSave(ctx context.Context, user fnos.User, id, expected string) (string, error) {
+func (s *Store) DeleteSave(ctx context.Context, user fnos.User, id, expected string) ([]string, error) {
 	if !validUser(user) || !ValidID(id) {
-		return "", ErrInvalid
+		return nil, ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer tx.Rollback()
 	old, err := scanSave(tx.QueryRowContext(ctx, selectSaves+` AND s.id=?`, user, id))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if old.ETag != expected {
-		return "", &SaveConflict{Current: old}
+		return nil, &SaveConflict{Current: old}
+	}
+	keys := []string{old.BlobKey}
+	var thumbKey string
+	if err := tx.QueryRowContext(ctx, `SELECT blob FROM save_thumbs WHERE owner=? AND save_id=?`, user, id).Scan(&thumbKey); err == nil {
+		if strings.HasPrefix(thumbKey, "thumb-") && blobKey(thumbKey) {
+			keys = append(keys, thumbKey)
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM saves WHERE owner=? AND id=?`, user, id); err != nil {
-		return "", err
+		return nil, err
 	}
-	return old.BlobKey, tx.Commit()
+	return keys, tx.Commit()
+}
+
+func (s *Store) GetSaveThumb(ctx context.Context, user fnos.User, saveID string) (CoverRecord, error) {
+	if !validUser(user) || !ValidID(saveID) {
+		return CoverRecord{}, ErrInvalid
+	}
+	var rec CoverRecord
+	err := s.db.QueryRowContext(ctx, `SELECT blob,sha256,size,content_type,updated_at FROM save_thumbs WHERE owner=? AND save_id=?`, user, saveID).
+		Scan(&rec.Blob.Key, &rec.Blob.SHA256, &rec.Blob.Size, &rec.ContentType, &rec.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CoverRecord{}, ErrNotFound
+	}
+	if err != nil {
+		return CoverRecord{}, err
+	}
+	return rec, nil
+}
+
+// SetSaveThumb replaces a save slot's preview thumbnail atomically and returns
+// the previous blob key (if any) for post-commit cleanup.
+func (s *Store) SetSaveThumb(ctx context.Context, user fnos.User, saveID string, blob Blob, contentType string) (Save, string, error) {
+	if !validUser(user) || !ValidID(saveID) || !strings.HasPrefix(blob.Key, "thumb-") || !blobKey(blob.Key) || !IsSHA256(blob.SHA256) || blob.Size <= 0 {
+		return Save{}, "", ErrInvalid
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Save{}, "", err
+	}
+	defer tx.Rollback()
+	if _, err := scanSave(tx.QueryRowContext(ctx, selectSaves+` AND s.id=?`, user, saveID)); err != nil {
+		return Save{}, "", err
+	}
+	var previous string
+	if err := tx.QueryRowContext(ctx, `SELECT blob FROM save_thumbs WHERE owner=? AND save_id=?`, user, saveID).Scan(&previous); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Save{}, "", err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO save_thumbs(owner,save_id,blob,sha256,size,content_type,updated_at) VALUES(?,?,?,?,?,?,?)
+		ON CONFLICT(owner,save_id) DO UPDATE SET blob=excluded.blob,sha256=excluded.sha256,size=excluded.size,content_type=excluded.content_type,updated_at=excluded.updated_at`,
+		user, saveID, blob.Key, blob.SHA256, blob.Size, contentType, timestamp()); err != nil {
+		return Save{}, "", err
+	}
+	updated, err := scanSave(tx.QueryRowContext(ctx, selectSaves+` AND s.id=?`, user, saveID))
+	if err != nil {
+		return Save{}, "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return Save{}, "", err
+	}
+	return updated, previous, nil
 }

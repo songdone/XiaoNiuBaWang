@@ -139,7 +139,7 @@ func (a *Auth) ValidHost(r *http.Request) bool {
 }
 
 // SameOrigin supplies a browser boundary in addition to transport auth and CSRF.
-// fnOS may terminate TLS and forward only the hostname over its private socket.
+// fnOS may terminate TLS or sit behind a reverse proxy with port translation.
 func (a *Auth) SameOrigin(r *http.Request) bool {
 	site := r.Header.Values("Sec-Fetch-Site")
 	if len(site) > 1 || len(site) == 1 && site[0] != "same-origin" && site[0] != "none" {
@@ -156,15 +156,33 @@ func (a *Auth) SameOrigin(r *http.Request) bool {
 	if err != nil || o.User != nil || o.Path != "" || o.Host == "" || o.Scheme != "http" && o.Scheme != "https" {
 		return false
 	}
-	host, port, ok := authority(r.Host)
 	incomingHost, incomingPort, valid := authority(o.Host)
-	if !ok || !valid || !strings.EqualFold(host, incomingHost) {
+	if !valid {
 		return false
 	}
-	if a.mode == Gateway {
-		return port == "" || port == defaultPort(o.Scheme, incomingPort)
+	host, port, ok := authority(r.Host)
+	if a.mode != Gateway {
+		return ok && strings.EqualFold(host, incomingHost) && o.Scheme == "http" && defaultPort("http", port) == defaultPort("http", incomingPort)
 	}
-	return o.Scheme == "http" && defaultPort("http", port) == defaultPort("http", incomingPort)
+	if ok && strings.EqualFold(host, incomingHost) {
+		if port == "" || port == defaultPort(o.Scheme, incomingPort) {
+			return true
+		}
+		// Reverse-proxied fnOS access (e.g. external :443/:8443 -> internal :5666)
+		// with matching hostname and browser-verified Sec-Fetch-Site: same-origin.
+		if len(site) == 1 && site[0] == "same-origin" {
+			return true
+		}
+	}
+	// Accept exact host match against a single valid X-Forwarded-Host header
+	// forwarded over fnOS's private Unix gateway socket.
+	if fwd := r.Header.Values("X-Forwarded-Host"); len(fwd) == 1 {
+		fHost, fPort, fOK := authority(strings.TrimSpace(fwd[0]))
+		if fOK && strings.EqualFold(fHost, incomingHost) && (fPort == "" || defaultPort(o.Scheme, fPort) == defaultPort(o.Scheme, incomingPort)) {
+			return true
+		}
+	}
+	return false
 }
 
 func defaultPort(scheme, port string) string {

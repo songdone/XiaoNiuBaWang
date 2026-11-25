@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +27,7 @@ type Job struct {
 	Visited         int     `json:"visited"`
 	Discovered      int     `json:"discovered"`
 	Imported        int     `json:"imported"`
+	Skipped         int     `json:"skipped,omitempty"`
 	Failed          int     `json:"failed"`
 	Errors          []Issue `json:"errors"`
 	StartedAt       string  `json:"startedAt"`
@@ -225,7 +225,8 @@ func (s *Scanner) walk(ctx context.Context, j *scanJob, p string, depth int) err
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if _, err := s.service.authorized(ctx, j.owner, p); err != nil {
+		roots, _, err := s.service.authorizedRoots(ctx, j.owner, p)
+		if err != nil {
 			return err
 		}
 		names, err := dir.Readdirnames(128)
@@ -253,17 +254,17 @@ func (s *Scanner) walk(ctx context.Context, j *scanJob, p string, depth int) err
 				continue
 			}
 			isDir := info.Mode&unix.S_IFMT == unix.S_IFDIR
-			if !isDir && (info.Mode&unix.S_IFMT != unix.S_IFREG || info.Nlink != 1 || !strings.EqualFold(filepath.Ext(name), ".nes")) {
-				continue
-			}
-			if _, err := s.service.authorized(ctx, j.owner, full); err != nil {
-				if ctx.Err() != nil || errors.Is(err, ErrUnavailable) {
-					return err
-				}
-				s.addError(j, full, err)
+			if !isDir && (info.Mode&unix.S_IFMT != unix.S_IFREG || info.Nlink != 1 || !isROMExt(name)) {
 				continue
 			}
 			if isDir {
+				if err := s.service.authorizedWithin(ctx, j.owner, roots, full); err != nil {
+					if ctx.Err() != nil || errors.Is(err, ErrUnavailable) {
+						return err
+					}
+					s.addError(j, full, err)
+					continue
+				}
 				if err := s.walk(ctx, j, full, depth+1); err != nil {
 					if ctx.Err() != nil {
 						return ctx.Err()
@@ -276,7 +277,7 @@ func (s *Scanner) walk(ctx context.Context, j *scanJob, p string, depth int) err
 				continue
 			}
 			s.update(j, func(out *Job) { out.Discovered++ })
-			games, err := s.service.importOne(ctx, j.owner, full)
+			_, created, skipped, err := s.service.importOneInDir(ctx, j.owner, dir, name, full, roots)
 			if err != nil {
 				if ctx.Err() != nil {
 					return ctx.Err()
@@ -287,7 +288,10 @@ func (s *Scanner) walk(ctx context.Context, j *scanJob, p string, depth int) err
 				s.addError(j, full, err)
 				continue
 			}
-			s.update(j, func(out *Job) { out.Imported += len(games) })
+			s.update(j, func(out *Job) {
+				out.Imported += created
+				out.Skipped += skipped
+			})
 		}
 		if errors.Is(err, io.EOF) {
 			_, err := s.service.authorized(ctx, j.owner, p)

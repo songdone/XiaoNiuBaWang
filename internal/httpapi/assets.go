@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -157,16 +158,36 @@ func (h *Handler) serveStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	w.Header().Set("Content-Type", assetType(name))
-	http.ServeContent(w, r, path.Base(name), time.Time{}, f)
+	var modTime time.Time
+	if info, statErr := f.Stat(); statErr == nil {
+		modTime = info.ModTime().UTC()
+		w.Header().Set("ETag", fmt.Sprintf(`"%x-%x"`, info.Size(), modTime.UnixNano()))
+	}
+	w.Header().Set("Cache-Control", staticCacheControl(name))
+	http.ServeContent(w, r, path.Base(name), modTime, f)
+}
+
+func staticCacheControl(name string) string {
+	switch {
+	case strings.HasPrefix(name, "assets/"):
+		return "public, max-age=31536000, immutable"
+	case strings.HasPrefix(name, "cores/"), strings.HasPrefix(name, "brand/"), strings.HasPrefix(name, "branding/"), strings.HasPrefix(name, "games/"), strings.HasPrefix(name, "covers/"), strings.HasPrefix(name, "licenses/"):
+		return "public, max-age=3600"
+	case name == "source/source.zip":
+		return "public, max-age=3600"
+	default:
+		// index.html, fnos-callback.html, and support images revalidate via ETag.
+		return "private, no-cache"
+	}
 }
 
 func allowedWebPath(name string) bool {
 	first, _, _ := strings.Cut(name, "/")
 	switch first {
-	case "assets", "brand", "branding", "cores":
+	case "assets", "brand", "branding", "cores", "covers":
 		return true
 	case "source":
-		return name == "source/source.zip"
+		return name == "source/source.zip" || name == "source/SOURCE-OFFER.json"
 	case "licenses":
 		return strings.EqualFold(path.Ext(name), ".txt")
 	default:

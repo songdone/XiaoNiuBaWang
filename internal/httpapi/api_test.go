@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -331,4 +332,179 @@ func TestGatewayDurabilityACLAndSnapshotConflict(t *testing.T) {
 	if !strings.Contains(string(r.body), `"recent":1`) || !strings.Contains(string(r.body), `"favorite":true`) {
 		t.Fatalf("activity not persisted: %s", r.body)
 	}
+}
+
+func makeZip(t *testing.T, entries map[string][]byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range entries {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestSingleROMZipUploadAndStaticCaching(t *testing.T) {
+	webDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(webDir, "assets"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(webDir, "brand"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<!doctype html>"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webDir, "assets", "app-abc123.js"), []byte("console.log(1)"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webDir, "brand", "logo.png"), []byte{0x89, 'P', 'N', 'G'}, 0644); err != nil {
+		t.Fatal(err)
+	}
+	a := startAPI(t, filepath.Join(t.TempDir(), "data"), fnos.Local, marker, func(c *Config) {
+		c.WebRoot = webDir
+	})
+	auth := []string{fnos.DevUserHeader, marker}
+	// Static caching & 304 ETag validation
+	js := a.request("GET", "/assets/app-abc123.js", nil)
+	expect(t, js, 200)
+	if !strings.Contains(js.header.Get("Cache-Control"), "immutable") || js.header.Get("ETag") == "" {
+		t.Fatalf("immutable asset headers missing: cc=%q etag=%q", js.header.Get("Cache-Control"), js.header.Get("ETag"))
+	}
+	expect(t, a.request("GET", "/assets/app-abc123.js", nil, "If-None-Match", js.header.Get("ETag")), 304)
+	logo := a.request("GET", "/brand/logo.png", nil)
+	expect(t, logo, 200)
+	if !strings.Contains(logo.header.Get("Cache-Control"), "max-age=3600") {
+		t.Fatalf("brand cache header unexpected: %q", logo.header.Get("Cache-Control"))
+	}
+	idx := a.request("GET", "/", nil)
+	expect(t, idx, 200)
+	if idx.header.Get("Cache-Control") != "private, no-cache" {
+		t.Fatalf("index cache header unexpected: %q", idx.header.Get("Cache-Control"))
+	}
+	// API stays strictly private, no-store
+	apiResp := a.request("GET", "/api/health", nil)
+	expect(t, apiResp, 200)
+	if apiResp.header.Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("API cache header weakened: %q", apiResp.header.Get("Cache-Control"))
+	}
+	// Single-ROM .zip upload works
+	rom := validROM(77)
+	goodZip := makeZip(t, map[string][]byte{"Contra (USA).nes": rom, "readme.txt": []byte("info")})
+	b, typ := multi(t, []upload{{"file", "contra.zip", goodZip}}, nil)
+	r := a.request("POST", "/api/games", b, append(auth, "Content-Type", typ)...)
+	expect(t, r, 201)
+	g := decode[struct{ Game store.Game }](t, r).Game
+	if g.Filename != "Contra (USA).nes" || g.Title != "Contra (USA)" || g.SHA256 != sum(rom) {
+		t.Fatalf("unexpected zip imported game: %+v", g)
+	}
+	// Multi-ROM zip and non-NES zip rejected
+	multiZip := makeZip(t, map[string][]byte{"a.nes": validROM(1), "b.nes": validROM(2)})
+	b, typ = multi(t, []upload{{"file", "bundle.zip", multiZip}}, nil)
+	expect(t, a.request("POST", "/api/games", b, append(auth, "Content-Type", typ)...), 415)
+	emptyZip := makeZip(t, map[string][]byte{"notes.txt": []byte("hi")})
+	b, typ = multi(t, []upload{{"file", "notes.zip", emptyZip}}, nil)
+	expect(t, a.request("POST", "/api/games", b, append(auth, "Content-Type", typ)...), 415)
+}
+
+func TestCustomGameCoverLifecycle(t *testing.T) {
+	a := startAPI(t, filepath.Join(t.TempDir(), "data"), fnos.Local, marker, nil)
+	auth := []string{fnos.DevUserHeader, marker}
+	b, typ := multi(t, []upload{{"file", "contra.nes", validROM(7)}}, nil)
+	r := a.request("POST", "/api/games", b, append(auth, "Content-Type", typ)...)
+	expect(t, r, 201)
+	id := decode[struct{ Game store.Game }](t, r).Game.ID
+
+	// Reject non-image bytes
+	expect(t, a.request("PUT", "/api/games/"+id+"/cover", bytes.NewReader([]byte("not-an-image")), append(auth, "Content-Type", "image/png")...), 415)
+
+	// Upload valid PNG cover
+	pngBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0, 'I', 'E', 'N', 'D'}
+	putRec := a.request("PUT", "/api/games/"+id+"/cover", bytes.NewReader(pngBytes), append(auth, "Content-Type", "image/png")...)
+	expect(t, putRec, 200)
+	updated := decode[store.Game](t, putRec)
+	if !strings.HasPrefix(updated.CoverURL, "/api/games/"+id+"/cover?v=") {
+		t.Fatalf("expected custom coverUrl, got %q", updated.CoverURL)
+	}
+
+	// Fetch cover bytes with sniffed Content-Type
+	getRec := a.request("GET", updated.CoverURL, nil, auth...)
+	expect(t, getRec, 200)
+	if ct := getRec.header.Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("expected image/png, got %q", ct)
+	}
+	if !bytes.Equal(getRec.body, pngBytes) {
+		t.Fatalf("cover bytes mismatch")
+	}
+
+	// Bundled game cover cannot be mutated
+	listRec := a.request("GET", "/api/games", nil, auth...)
+	expect(t, listRec, 200)
+	listed := decode[struct{ Games []store.Game }](t, listRec).Games
+	for _, item := range listed {
+		if item.Source == "bundled" {
+			expect(t, a.request("PUT", "/api/games/"+item.ID+"/cover", bytes.NewReader(pngBytes), append(auth, "Content-Type", "image/png")...), 403)
+			break
+		}
+	}
+
+	// Delete custom cover restores empty CoverURL and 404 on GET
+	delRec := a.request("DELETE", "/api/games/"+id+"/cover", nil, auth...)
+	expect(t, delRec, 200)
+	cleared := decode[store.Game](t, delRec)
+	if cleared.CoverURL != "" {
+		t.Fatalf("expected empty coverUrl after delete, got %q", cleared.CoverURL)
+	}
+	expect(t, a.request("GET", "/api/games/"+id+"/cover", nil, auth...), 404)
+}
+
+func TestSaveThumbLifecycle(t *testing.T) {
+	marker := "thumb-test-user"
+	a := startAPI(t, filepath.Join(t.TempDir(), "data"), fnos.Local, marker, nil)
+	auth := []string{fnos.DevUserHeader, marker}
+	b, typ := multi(t, []upload{{"file", "thumb-game.nes", validROM(9)}}, nil)
+	r := a.request("POST", "/api/games", b, append(auth, "Content-Type", typ)...)
+	expect(t, r, 201)
+	g := decode[struct{ Game store.Game }](t, r).Game
+
+	stateBytes := []byte("NES-STATE-SNAPSHOT")
+	sb, styp := multi(t, []upload{{"file", "slot1.state", stateBytes}}, map[string]string{
+		"gameId": g.ID, "kind": "state", "slot": "1", "core": "fceumm", "coreVersion": "1.0", "romSha256": g.SHA256,
+	})
+	sr := a.request("POST", "/api/saves", sb, append(auth, "Content-Type", styp)...)
+	expect(t, sr, 201)
+	slot := decode[store.Save](t, sr)
+
+	// Reject non-image bytes
+	expect(t, a.request("PUT", "/api/saves/"+slot.ID+"/thumb", bytes.NewReader([]byte("nope")), append(auth, "Content-Type", "image/png")...), 415)
+
+	// Upload PNG thumbnail
+	pngBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0, 'I', 'E', 'N', 'D'}
+	put := a.request("PUT", "/api/saves/"+slot.ID+"/thumb", bytes.NewReader(pngBytes), append(auth, "Content-Type", "image/png")...)
+	expect(t, put, 200)
+	withThumb := decode[store.Save](t, put)
+	if !strings.HasPrefix(withThumb.ThumbURL, "/api/saves/"+slot.ID+"/thumb?v=") {
+		t.Fatalf("expected thumbUrl, got %q", withThumb.ThumbURL)
+	}
+
+	// Fetch thumbnail bytes
+	get := a.request("GET", withThumb.ThumbURL, nil, auth...)
+	expect(t, get, 200)
+	if ct := get.header.Get("Content-Type"); ct != "image/png" || !bytes.Equal(get.body, pngBytes) {
+		t.Fatalf("unexpected thumb response ct=%q len=%d", ct, len(get.body))
+	}
+
+	// Deleting the save cleans up the thumbnail too
+	del := a.request("DELETE", "/api/saves/"+slot.ID, nil, append(auth, "If-Match", slot.ETag)...)
+	expect(t, del, 204)
+	expect(t, a.request("GET", "/api/saves/"+slot.ID+"/thumb", nil, auth...), 404)
 }

@@ -111,7 +111,7 @@ func TestAuthorizedBrowseAndStrictPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listing.Entries) != 2 || listing.Entries[0].Kind != "directory" || listing.Entries[1].Name != "good.nes" || listing.Parent != nil {
+	if len(listing.Entries) != 2 || listing.Entries[0].Kind != "directory" || listing.Entries[1].Name != "good.nes" || listing.Parent != nil || listing.SkippedLinks != 4 {
 		t.Fatalf("unexpected listing %+v", listing)
 	}
 	paths := []string{root + "/../" + filepath.Base(outside) + "/escape.nes", root + "\\good.nes", root + "//good.nes", root + "/./good.nes", filepath.Join(root, "linked", "escape.nes"), filepath.Join(root, "link.nes"), filepath.Join(root, "hard.nes"), filepath.Join(root, "pipe.nes"), filepath.Join(root, "denied.nes"), filepath.Join(outside, "escape.nes")}
@@ -301,7 +301,7 @@ func TestRescanUsesRealLibraryHashDedupe(t *testing.T) {
 	}
 	scanner := NewScanner(service)
 	defer scanner.Close()
-	for range 2 {
+	for round := range 2 {
 		job, err := scanner.Start(ctx, testUser, key)
 		if err != nil {
 			t.Fatal(err)
@@ -315,8 +315,12 @@ func TestRescanUsesRealLibraryHashDedupe(t *testing.T) {
 			t.Fatal("rescan timeout")
 		}
 		job, err = scanner.Get(testUser, job.ID)
-		if err != nil || job.Status != "completed" || job.Discovered != 2 || job.Imported != 2 || job.Failed != 0 {
-			t.Fatalf("scan %+v %v", job, err)
+		wantImported, wantSkipped := 1, 1
+		if round == 1 {
+			wantImported, wantSkipped = 0, 2
+		}
+		if err != nil || job.Status != "completed" || job.Discovered != 2 || job.Imported != wantImported || job.Skipped != wantSkipped || job.Failed != 0 {
+			t.Fatalf("scan round=%d %+v %v", round, job, err)
 		}
 	}
 	games, err := lib.List(ctx, testUser)

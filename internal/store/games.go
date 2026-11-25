@@ -49,15 +49,16 @@ func (g Game) Blob() Blob { return Blob{g.BlobKey, g.Size, g.SHA256} }
 
 const selectGames = `SELECT g.id,g.title,g.filename,g.sha256,g.size,g.mapper,g.format,g.blob,g.created_at,g.extras,
  CASE WHEN g.owner='' THEN 'bundled' ELSE 'imported' END,
- coalesce(a.favorite,0),coalesce(a.last_played_at,''),coalesce(a.play_count,0)` + gameScope
+ coalesce(a.favorite,0),coalesce(a.last_played_at,''),coalesce(a.play_count,0),
+ coalesce((SELECT c.sha256 FROM covers AS c WHERE c.owner=g.owner AND c.game_id=g.id),'')` + gameScope
 
 const gameScope = ` FROM games AS g LEFT JOIN activity AS a ON a.game_id=g.id AND a.owner=?
  WHERE g.available=1 AND (g.owner=? OR g.owner='')`
 
 func scanGame(row interface{ Scan(...any) error }) (g Game, err error) {
-	var extras string
+	var extras, coverSHA string
 	err = row.Scan(&g.ID, &g.Title, &g.Filename, &g.SHA256, &g.Size, &g.Mapper, &g.Format, &g.BlobKey,
-		&g.CreatedAt, &extras, &g.Source, &g.Favorite, &g.LastPlayedAt, &g.PlayCount)
+		&g.CreatedAt, &extras, &g.Source, &g.Favorite, &g.LastPlayedAt, &g.PlayCount, &coverSHA)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -67,6 +68,9 @@ func scanGame(row interface{ Scan(...any) error }) (g Game, err error) {
 	g.System = "NES"
 	if err := json.Unmarshal([]byte(extras), &g.GameExtras); err != nil {
 		return Game{}, ErrCorrupt
+	}
+	if len(coverSHA) >= 12 {
+		g.CoverURL = "/api/games/" + g.ID + "/cover?v=" + coverSHA[:12]
 	}
 	return g, nil
 }
@@ -111,33 +115,70 @@ func gameArgs(g Game, user fnos.User) ([]any, error) {
 	return []any{g.ID, user, g.Filename, g.Title, g.SHA256, g.Size, g.Mapper, g.Format, g.BlobKey, g.CreatedAt, string(b)}, err
 }
 
+// HasGameBySHA256 checks whether this user already owns an imported ROM with
+// the exact digest, allowing callers to skip redundant blob writes on rescan.
+func (s *Store) HasGameBySHA256(ctx context.Context, user fnos.User, sha256 string) (Game, bool, error) {
+	if !validUser(user) || !IsSHA256(sha256) {
+		return Game{}, false, ErrInvalid
+	}
+	g, err := scanGame(s.db.QueryRowContext(ctx, selectGames+` AND g.owner=? AND g.sha256=?`, user, user, user, sha256))
+	if errors.Is(err, ErrNotFound) {
+		return Game{}, false, nil
+	}
+	if err != nil {
+		return Game{}, false, err
+	}
+	return g, true, nil
+}
+
 // CommitGames publishes the already-written files atomically. Exact duplicates
 // in this user's library resolve to the existing row without overwriting it.
 func (s *Store) CommitGames(ctx context.Context, user fnos.User, games []Game) ([]Game, error) {
+	out, _, _, err := s.CommitGamesDetailed(ctx, user, games)
+	return out, err
+}
+
+// CommitGamesDetailed publishes games atomically and separates newly inserted
+// entries from exact-digest duplicates already present in this user's library.
+func (s *Store) CommitGamesDetailed(ctx context.Context, user fnos.User, games []Game) ([]Game, int, int, error) {
 	if !validUser(user) {
-		return nil, ErrInvalid
+		return nil, 0, 0, ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	defer tx.Rollback()
 	out := make([]Game, 0, len(games))
+	created, skipped := 0, 0
 	for _, g := range games {
 		args, err := gameArgs(g, user)
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
-		if _, err := tx.ExecContext(ctx, insertGame+` ON CONFLICT(owner,sha256) WHERE owner<>'' DO NOTHING`, args...); err != nil {
-			return nil, err
+		res, err := tx.ExecContext(ctx, insertGame+` ON CONFLICT(owner,sha256) WHERE owner<>'' DO NOTHING`, args...)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		if affected > 0 {
+			created++
+		} else {
+			skipped++
 		}
 		stored, err := scanGame(tx.QueryRowContext(ctx, selectGames+` AND g.owner=? AND g.sha256=?`, user, user, user, g.SHA256))
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		out = append(out, stored)
 	}
-	return out, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, 0, 0, err
+	}
+	return out, created, skipped, nil
 }
 
 // SyncBundled makes only current catalog entries visible. Preserve activity and
@@ -277,8 +318,134 @@ func (s *Store) DeleteGame(ctx context.Context, user fnos.User, id string) ([]st
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	thumbRows, err := tx.QueryContext(ctx, `SELECT t.blob FROM save_thumbs AS t JOIN saves AS s ON s.id=t.save_id AND s.owner=t.owner WHERE t.owner=? AND s.game_id=?`, user, id)
+	if err != nil {
+		return nil, err
+	}
+	defer thumbRows.Close()
+	for thumbRows.Next() {
+		var key string
+		if err := thumbRows.Scan(&key); err != nil {
+			return nil, err
+		}
+		if !strings.HasPrefix(key, "thumb-") || !blobKey(key) {
+			return nil, ErrCorrupt
+		}
+		keys = append(keys, key)
+	}
+	if err := thumbRows.Err(); err != nil {
+		return nil, err
+	}
+	if err := thumbRows.Close(); err != nil {
+		return nil, err
+	}
+	var coverKey string
+	if err := tx.QueryRowContext(ctx, `SELECT blob FROM covers WHERE owner=? AND game_id=?`, user, id).Scan(&coverKey); err == nil {
+		if !strings.HasPrefix(coverKey, "cover-") || !blobKey(coverKey) {
+			return nil, ErrCorrupt
+		}
+		keys = append(keys, coverKey)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM games WHERE id=? AND owner=?`, id, user); err != nil {
 		return nil, err
 	}
 	return keys, tx.Commit()
+}
+
+type CoverRecord struct {
+	Blob        Blob
+	ContentType string
+	UpdatedAt   string
+}
+
+func (s *Store) GetCover(ctx context.Context, user fnos.User, gameID string) (CoverRecord, error) {
+	if !validUser(user) || !ValidID(gameID) {
+		return CoverRecord{}, ErrInvalid
+	}
+	var rec CoverRecord
+	err := s.db.QueryRowContext(ctx, `SELECT blob,sha256,size,content_type,updated_at FROM covers WHERE owner=? AND game_id=?`, user, gameID).
+		Scan(&rec.Blob.Key, &rec.Blob.SHA256, &rec.Blob.Size, &rec.ContentType, &rec.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CoverRecord{}, ErrNotFound
+	}
+	if err != nil {
+		return CoverRecord{}, err
+	}
+	return rec, nil
+}
+
+// SetCover replaces an imported game's custom cover metadata atomically and
+// returns the previous blob key (if any) for post-commit cleanup.
+func (s *Store) SetCover(ctx context.Context, user fnos.User, gameID string, blob Blob, contentType string) (Game, string, error) {
+	if !validUser(user) || !ValidID(gameID) || !strings.HasPrefix(blob.Key, "cover-") || !blobKey(blob.Key) || !IsSHA256(blob.SHA256) || blob.Size <= 0 {
+		return Game{}, "", ErrInvalid
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Game{}, "", err
+	}
+	defer tx.Rollback()
+	g, err := scanGame(tx.QueryRowContext(ctx, selectGames+` AND g.id=?`, user, user, gameID))
+	if err != nil {
+		return Game{}, "", err
+	}
+	if g.Source == "bundled" {
+		return Game{}, "", ErrReadOnly
+	}
+	var previous string
+	if err := tx.QueryRowContext(ctx, `SELECT blob FROM covers WHERE owner=? AND game_id=?`, user, gameID).Scan(&previous); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Game{}, "", err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO covers(owner,game_id,blob,sha256,size,content_type,updated_at) VALUES(?,?,?,?,?,?,?)
+		ON CONFLICT(owner,game_id) DO UPDATE SET blob=excluded.blob,sha256=excluded.sha256,size=excluded.size,content_type=excluded.content_type,updated_at=excluded.updated_at`,
+		user, gameID, blob.Key, blob.SHA256, blob.Size, contentType, timestamp()); err != nil {
+		return Game{}, "", err
+	}
+	updated, err := scanGame(tx.QueryRowContext(ctx, selectGames+` AND g.id=?`, user, user, gameID))
+	if err != nil {
+		return Game{}, "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return Game{}, "", err
+	}
+	return updated, previous, nil
+}
+
+// DeleteCover removes an imported game's custom cover and returns the removed blob key.
+func (s *Store) DeleteCover(ctx context.Context, user fnos.User, gameID string) (Game, string, error) {
+	if !validUser(user) || !ValidID(gameID) {
+		return Game{}, "", ErrInvalid
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Game{}, "", err
+	}
+	defer tx.Rollback()
+	g, err := scanGame(tx.QueryRowContext(ctx, selectGames+` AND g.id=?`, user, user, gameID))
+	if err != nil {
+		return Game{}, "", err
+	}
+	if g.Source == "bundled" {
+		return Game{}, "", ErrReadOnly
+	}
+	var previous string
+	if err := tx.QueryRowContext(ctx, `SELECT blob FROM covers WHERE owner=? AND game_id=?`, user, gameID).Scan(&previous); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return g, "", nil
+		}
+		return Game{}, "", err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM covers WHERE owner=? AND game_id=?`, user, gameID); err != nil {
+		return Game{}, "", err
+	}
+	updated, err := scanGame(tx.QueryRowContext(ctx, selectGames+` AND g.id=?`, user, user, gameID))
+	if err != nil {
+		return Game{}, "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return Game{}, "", err
+	}
+	return updated, previous, nil
 }
