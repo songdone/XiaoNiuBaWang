@@ -49,12 +49,12 @@
       "sha256": "6930dd173b25ddc79502137adab6ee263e98887edfc6f5e1e5b5da7f6accd539"
     },
     "fceumm.js": {
-      "bytes": 13113,
-      "sha256": "371c222d308ba39b726ad4629c5f365aab03c4d64d200768b3e57c5f3d0caeac"
+      "bytes": 19043,
+      "sha256": "0cedd48b0b1c701634a6228c324691a3c5c3af507ddb57199db807814de6197b"
     },
     "fceumm.d.ts": {
-      "bytes": 2494,
-      "sha256": "0d73dcecc801d7825feaf6d1690463a63fdb93163d64fb89eeacb105d72d75f5"
+      "bytes": 2639,
+      "sha256": "793ca35cd5ab44913acc7d0170c667d30a35c24ac72f8b40228be85d5f22e51e"
     }
   },
   "rebuild": {

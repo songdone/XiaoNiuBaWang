@@ -28,6 +28,8 @@ export interface EmulatorAdapter {
   setKeyboardDevice(device: KeyboardDevice): void;
   releaseAll(): void;
   setVolume(volume: number): void;
+  setSpeed?(multiplier: number): void;
+  setRamCheats?(cheats: ReadonlyArray<{ address: number; value: number }>): void;
   saveState(): Uint8Array;
   loadState(state: Uint8Array): void;
   getSaveRAM(): Uint8Array;
@@ -58,6 +60,8 @@ export interface CoreRuntime {
   loadSaveRAM(state: Uint8Array): boolean;
   destroy(): void;
   setVolume?(volume: number): void;
+  setSpeed?(multiplier: number): void;
+  setRamCheats?(cheats: ReadonlyArray<{ address: number; value: number }>): void;
   resumeAudio?(): Promise<void>;
 }
 export interface FceummModule {
@@ -125,6 +129,8 @@ export async function createAdapter(context: EmulatorContext, descriptor: CoreDe
       setKeyboardDevice(device) { core.releaseAll(); core.setKeyboardDevice(device); },
       releaseAll() { core.releaseAll(); },
       setVolume(volume) { core.setVolume?.(Math.max(0, Math.min(1, volume))); },
+      setSpeed(multiplier) { core.setSpeed?.(multiplier); },
+      setRamCheats(cheats) { core.setRamCheats?.(cheats); },
       saveState() {
         const bytes = core.getState();
         if (!bytes.length) throw new Error('核心没有返回有效的即时存档。');

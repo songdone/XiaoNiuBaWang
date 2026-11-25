@@ -17,6 +17,9 @@ export interface Runtime {
   readonly isLoaded: boolean;
   readonly fps: number;
   readonly sampleRate: number;
+  readonly speed: number;
+  setSpeed(multiplier: number): void;
+  setRamCheats(cheats: ReadonlyArray<{ address: number; value: number }>): void;
   loadRom(bytes: Uint8Array | ArrayBuffer): { fps: number; sampleRate: number; version: string };
   runFrame(): Frame;
   start(): void;

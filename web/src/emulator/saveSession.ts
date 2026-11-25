@@ -5,6 +5,22 @@ import { sameBytes } from './saves';
 export const EXIT_WAIT_MS = 5_000;
 const storageKey = (gameId: string) => `xnbw:pending:${gameId}`;
 
+function encodeBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function decodeBase64(encoded: string): Uint8Array {
+  const binary = atob(encoded);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
 /** One owner for all adapter/save operations; React state is not a mutex. */
 export class SaveSession {
   busy = false;
@@ -19,17 +35,30 @@ export class SaveSession {
       if (!Array.isArray(stored)) throw new Error('Invalid pending snapshots');
       this.pending = stored.map((item) => {
         if (!item || item.game?.id !== gameId || !['state', 'sram'].includes(item.kind) ||
-          !Array.isArray(item.bytes) || !item.bytes.length || !item.bytes.every((byte: unknown) => Number.isInteger(byte) && Number(byte) >= 0 && Number(byte) <= 255) ||
-          ![0, 1, 2, 3].includes(item.slot) || (item.kind === 'sram' ? item.slot !== 0 : item.slot === 0) ||
+          !Number.isInteger(item.slot) || item.slot < 0 || item.slot > 99 ||
+          (item.kind === 'sram' ? item.slot !== 0 : item.slot === 0) ||
           typeof item.core !== 'string' || typeof item.coreVersion !== 'string') throw new Error('Invalid pending snapshot');
-        return { ...item, bytes: new Uint8Array(item.bytes) } as SaveUpload;
+        let bytes: Uint8Array;
+        if (typeof item.bytesB64 === 'string' && item.bytesB64.length > 0) {
+          bytes = decodeBase64(item.bytesB64);
+        } else if (Array.isArray(item.bytes) && item.bytes.length && item.bytes.every((byte: unknown) => Number.isInteger(byte) && Number(byte) >= 0 && Number(byte) <= 255)) {
+          bytes = new Uint8Array(item.bytes);
+        } else {
+          throw new Error('Invalid pending snapshot');
+        }
+        if (!bytes.length) throw new Error('Invalid pending snapshot');
+        const { bytesB64: _drop, ...rest } = item as Record<string, unknown>;
+        return { ...rest, bytes } as SaveUpload;
       });
     } catch { this.storageError = '无法读取本标签页保留的快照，请勿刷新；可下载当前进度。'; }
   }
   persist() {
     try {
-      if (this.pending.length) sessionStorage.setItem(storageKey(this.gameId), JSON.stringify(this.pending.map((snapshot) => ({ ...snapshot, bytes: Array.from(snapshot.bytes) }))));
-      else sessionStorage.removeItem(storageKey(this.gameId));
+      if (this.pending.length) {
+        sessionStorage.setItem(storageKey(this.gameId), JSON.stringify(this.pending.map(({ bytes, ...rest }) => ({ ...rest, bytesB64: encodeBase64(bytes) }))));
+      } else {
+        sessionStorage.removeItem(storageKey(this.gameId));
+      }
       this.storageError = '';
     } catch { this.storageError = '浏览器未能持久保留本地快照。刷新或关闭前请下载，当前内存中的快照仍在。'; }
   }

@@ -4,6 +4,67 @@ export const KEYBOARD_DEVICES = Object.freeze({ none: 0, family: 1283, subor: 15
 export const RETRO_KEYS = Object.freeze({ BACKSPACE: 8, TAB: 9, RETURN: 13, PAUSE: 19, ESCAPE: 27, SPACE: 32, BACKQUOTE: 96, DELETE: 127, KP0: 256, KP1: 257, KP2: 258, KP3: 259, KP4: 260, KP5: 261, KP6: 262, KP7: 263, KP8: 264, KP9: 265, KP_PERIOD: 266, KP_DIVIDE: 267, KP_MULTIPLY: 268, KP_MINUS: 269, KP_PLUS: 270, KP_ENTER: 271, KP_EQUALS: 272, UP: 273, DOWN: 274, RIGHT: 275, LEFT: 276, INSERT: 277, HOME: 278, END: 279, PAGEUP: 280, PAGEDOWN: 281, F1: 282, F2: 283, F3: 284, F4: 285, F5: 286, F6: 287, F7: 288, F8: 289, F9: 290, F10: 291, F11: 292, F12: 293, NUMLOCK: 300, CAPSLOCK: 301, SCROLLLOCK: 302, RSHIFT: 303, LSHIFT: 304, RCTRL: 305, LCTRL: 306, RALT: 307, LALT: 308, BREAK: 318 });
 const CODE_KEYS = Object.freeze({ Backspace: 8, Tab: 9, Enter: 13, Pause: 19, Escape: 27, Space: 32, Quote: 39, Comma: 44, Minus: 45, Period: 46, Slash: 47, Semicolon: 59, Equal: 61, BracketLeft: 91, Backslash: 92, IntlBackslash: 92, BracketRight: 93, Backquote: 96, Delete: 127, NumpadDecimal: 266, NumpadDivide: 267, NumpadMultiply: 268, NumpadSubtract: 269, NumpadAdd: 270, NumpadEnter: 271, NumpadEqual: 272, ArrowUp: 273, ArrowDown: 274, ArrowRight: 275, ArrowLeft: 276, Insert: 277, Home: 278, End: 279, PageUp: 280, PageDown: 281, NumLock: 300, CapsLock: 301, ScrollLock: 302, ShiftRight: 303, ShiftLeft: 304, ControlRight: 305, ControlLeft: 306, AltRight: 307, AltLeft: 308, MetaRight: 309, MetaLeft: 310, ContextMenu: 319 });
 
+const WORKLET_CODE = `
+class XnbwPcmProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.cap = 16384;
+    this.ringL = new Float32Array(this.cap);
+    this.ringR = new Float32Array(this.cap);
+    this.read = 0;
+    this.write = 0;
+    this.count = 0;
+    this.lastL = 0;
+    this.lastR = 0;
+    this.port.onmessage = (event) => {
+      const msg = event.data;
+      if (msg === 'clear') {
+        this.read = 0; this.write = 0; this.count = 0;
+        this.lastL = 0; this.lastR = 0;
+        return;
+      }
+      if (!msg || !msg.samples) return;
+      const samples = msg.samples;
+      const frames = samples.length >> 1;
+      const maxBuffered = 8192;
+      if (this.count + frames > maxBuffered) {
+        const drop = Math.min(this.count, this.count + frames - maxBuffered);
+        this.read = (this.read + drop) % this.cap;
+        this.count -= drop;
+      }
+      for (let i = 0; i < frames; i++) {
+        this.ringL[this.write] = samples[i * 2];
+        this.ringR[this.write] = samples[i * 2 + 1];
+        this.write = (this.write + 1) % this.cap;
+        if (this.count < this.cap) this.count++;
+        else this.read = (this.read + 1) % this.cap;
+      }
+    };
+  }
+  process(_inputs, outputs) {
+    const out = outputs[0];
+    if (!out || !out.length) return true;
+    const chL = out[0];
+    const chR = out[1] || out[0];
+    for (let i = 0; i < chL.length; i++) {
+      if (this.count > 0) {
+        this.lastL = this.ringL[this.read];
+        this.lastR = this.ringR[this.read];
+        this.read = (this.read + 1) % this.cap;
+        this.count--;
+      } else {
+        this.lastL *= 0.96;
+        this.lastR *= 0.96;
+      }
+      chL[i] = this.lastL;
+      if (chR !== chL) chR[i] = this.lastR;
+    }
+    return true;
+  }
+}
+registerProcessor('xnbw-pcm-processor', XnbwPcmProcessor);
+`;
+
 /** Map KeyboardEvent.code (physical key), or an event, to a libretro RETROK value. Unknown keys return null. */
 export function browserCodeToRetroKey(codeOrEvent) {
   const code = typeof codeOrEvent === 'string' ? codeOrEvent : codeOrEvent?.code;
@@ -36,8 +97,12 @@ export async function create({ canvas = null, onFrame = null, onAudio = null, au
   const context = canvas?.getContext('2d', { alpha: false });
   if (canvas && !context) { core._xn_destroy(); throw new Error('A 2D canvas context is required'); }
   let disposed = false, loaded = false, running = false, rafID = null;
-  let audioContext = null, gain = null, nextAudioTime = 0, nextFrameTime = 0;
+  let audioContext = null, gain = null, workletNode = null, workletReady = false, workletInit = null;
+  let nextAudioTime = 0, nextFrameTime = 0, playbackSpeed = 1;
   let currentVolume = Math.min(1, Math.max(0, Number(volume) || 0));
+  let imageData = null, imageWidth = 0, imageHeight = 0;
+  let audioScratch = new Float32Array(0);
+  let ramCheats = [];
   const sources = new Set();
   const now = () => globalThis.performance?.now() ?? Date.now();
   const requestFrame = globalThis.requestAnimationFrame?.bind(globalThis) ?? ((fn) => setTimeout(() => fn(now()), 16));
@@ -57,18 +122,51 @@ export async function create({ canvas = null, onFrame = null, onAudio = null, au
     finally { core._free(pointer); }
   };
   const clearAudio = () => {
+    if (workletNode) {
+      try { workletNode.port.postMessage('clear'); } catch {}
+    }
     for (const source of sources) { try { source.stop(); } catch {} source.disconnect(); }
     sources.clear();
     nextAudioTime = 0;
   };
-  const scheduleAudio = (samples, sampleRate) => {
-    if (!audio || !audioContext || audioContext.state !== 'running' || !samples.length) return;
-    const frames = samples.length / 2;
+  const initWorklet = async () => {
+    if (!audioContext || workletReady || workletInit) return workletInit;
+    if (!audioContext.audioWorklet || typeof AudioWorkletNode === 'undefined' || typeof Blob === 'undefined' || typeof URL?.createObjectURL !== 'function') {
+      return null;
+    }
+    workletInit = (async () => {
+      let blobUrl = '';
+      try {
+        blobUrl = URL.createObjectURL(new Blob([WORKLET_CODE], { type: 'text/javascript' }));
+        await audioContext.audioWorklet.addModule(blobUrl);
+        if (disposed || !audioContext || audioContext.state === 'closed') return;
+        workletNode = new AudioWorkletNode(audioContext, 'xnbw-pcm-processor', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+        workletNode.connect(gain);
+        workletReady = true;
+      } catch {
+        workletNode = null;
+        workletReady = false;
+      } finally {
+        if (blobUrl) try { URL.revokeObjectURL(blobUrl); } catch {}
+      }
+    })();
+    return workletInit;
+  };
+  const scheduleAudio = (samples, count, sampleRate) => {
+    if (!audio || !audioContext || audioContext.state !== 'running' || !count || playbackSpeed > 1) return;
+    if (workletReady && workletNode) {
+      const payload = samples.slice(0, count);
+      try { workletNode.port.postMessage({ samples: payload }, [payload.buffer]); return; }
+      catch { workletReady = false; }
+    }
+    const frames = count >> 1;
     if (nextAudioTime - audioContext.currentTime > 0.2) return;
     const buffer = audioContext.createBuffer(2, frames, sampleRate);
-    for (let channel = 0; channel < 2; channel++) {
-      const target = buffer.getChannelData(channel);
-      for (let i = 0; i < frames; i++) target[i] = samples[i * 2 + channel];
+    const ch0 = buffer.getChannelData(0);
+    const ch1 = buffer.getChannelData(1);
+    for (let i = 0; i < frames; i++) {
+      ch0[i] = samples[i * 2];
+      ch1[i] = samples[i * 2 + 1];
     }
     const source = audioContext.createBufferSource();
     source.buffer = buffer;
@@ -78,6 +176,59 @@ export async function create({ canvas = null, onFrame = null, onAudio = null, au
     sources.add(source);
     source.start(nextAudioTime);
     nextAudioTime += frames / sampleRate;
+  };
+  const applyRamCheats = () => {
+    if (!ramCheats.length || !loaded) return;
+    const pointer = core._xn_memory_data(2), size = core._xn_memory_size(2);
+    if (!pointer || !size) return;
+    for (let i = 0; i < ramCheats.length; i++) {
+      const { address, value } = ramCheats[i];
+      if (address >= 0 && address < size) core.HEAPU8[pointer + address] = value & 0xff;
+    }
+  };
+  const stepFrame = (render, returnCopy) => {
+    assertLoaded();
+    applyRamCheats();
+    if (!core._xn_run()) throw new Error('FCEUmm frame failed');
+    applyRamCheats();
+    const width = core._xn_width(), height = core._xn_height();
+    const pointer = core._xn_pixels();
+    const byteLength = width * height * 4;
+    const pixelView = core.HEAPU8.subarray(pointer, pointer + byteLength);
+    if (render && context && width && height) {
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+      if (!imageData || imageWidth !== width || imageHeight !== height) {
+        imageData = context.createImageData(width, height);
+        imageWidth = width;
+        imageHeight = height;
+      }
+      imageData.data.set(pixelView);
+      context.imageSmoothingEnabled = false;
+      context.putImageData(imageData, 0, 0);
+    }
+    let frame = null;
+    if (returnCopy || onFrame) {
+      const data = new Uint8ClampedArray(pixelView);
+      frame = { data, width, height, frameNumber: core._xn_frame_number() };
+      onFrame?.(frame);
+    }
+    const count = core._xn_audio_frames() * 2;
+    if (count && (onAudio || (audio && audioContext && audioContext.state === 'running' && playbackSpeed <= 1))) {
+      const start = core._xn_audio() >> 1;
+      const sampleRate = runtime.sampleRate;
+      if (onAudio) {
+        const samples = new Float32Array(count);
+        for (let i = 0; i < count; i++) samples[i] = core.HEAP16[start + i] / 32768;
+        onAudio({ samples, sampleRate, channels: 2 });
+        scheduleAudio(samples, count, sampleRate);
+      } else {
+        if (audioScratch.length < count) audioScratch = new Float32Array(count);
+        for (let i = 0; i < count; i++) audioScratch[i] = core.HEAP16[start + i] / 32768;
+        scheduleAudio(audioScratch, count, sampleRate);
+      }
+    }
+    return frame;
   };
   const releaseAll = () => { if (!disposed) core._xn_release_all(); };
   const visibility = () => { if (globalThis.document?.hidden) runtime.pause(); };
@@ -90,6 +241,26 @@ export async function create({ canvas = null, onFrame = null, onAudio = null, au
     get isLoaded() { return loaded; },
     get fps() { return loaded ? core._xn_fps() : 60.0988; },
     get sampleRate() { return loaded ? core._xn_sample_rate() : 48000; },
+    get speed() { return playbackSpeed; },
+    setSpeed(value) {
+      assertLive();
+      const next = Number.isFinite(value) ? Math.min(4, Math.max(1, value)) : 1;
+      if (next !== playbackSpeed) {
+        playbackSpeed = next;
+        if (playbackSpeed > 1) clearAudio();
+        nextFrameTime = now();
+      }
+    },
+    setRamCheats(list) {
+      assertLive();
+      ramCheats = Array.isArray(list)
+        ? list
+            .filter((item) => item && Number.isInteger(item.address) && item.address >= 0 && item.address < 0x800 && Number.isInteger(item.value) && item.value >= 0 && item.value <= 0xff)
+            .slice(0, 32)
+            .map((item) => ({ address: item.address, value: item.value }))
+        : [];
+      applyRamCheats();
+    },
     loadRom(value) {
       assertLive();
       const bytes = bytesOf(value);
@@ -103,29 +274,7 @@ export async function create({ canvas = null, onFrame = null, onAudio = null, au
       return { fps: runtime.fps, sampleRate: runtime.sampleRate, version: runtime.version };
     },
     runFrame() {
-      assertLoaded();
-      if (!core._xn_run()) throw new Error('FCEUmm frame failed');
-      const width = core._xn_width(), height = core._xn_height();
-      const pointer = core._xn_pixels();
-      const data = new Uint8ClampedArray(core.HEAPU8.subarray(pointer, pointer + width * height * 4));
-      const frame = { data, width, height, frameNumber: core._xn_frame_number() };
-      if (context && width && height) {
-        if (canvas.width !== width) canvas.width = width;
-        if (canvas.height !== height) canvas.height = height;
-        context.imageSmoothingEnabled = false;
-        context.putImageData(new ImageData(data, width, height), 0, 0);
-      }
-      onFrame?.(frame);
-      const count = core._xn_audio_frames() * 2;
-      if (count) {
-        const start = core._xn_audio() >> 1;
-        const samples = new Float32Array(count);
-        for (let i = 0; i < count; i++) samples[i] = core.HEAP16[start + i] / 32768;
-        const sampleRate = runtime.sampleRate;
-        onAudio?.({ samples, sampleRate, channels: 2 });
-        scheduleAudio(samples, sampleRate);
-      }
-      return frame;
+      return stepFrame(true, true);
     },
     start() {
       assertLoaded();
@@ -135,12 +284,18 @@ export async function create({ canvas = null, onFrame = null, onAudio = null, au
       runtime.resumeAudio().catch(() => {});
       const tick = (time) => {
         if (!running || disposed) return;
-        let frames = 0;
-        if (time - nextFrameTime > 100) nextFrameTime = time;
-        while (time >= nextFrameTime && frames < 5 && running) {
-          runtime.runFrame();
-          nextFrameTime += 1000 / runtime.fps;
-          frames++;
+        const stepMs = 1000 / (runtime.fps * playbackSpeed);
+        if (time - nextFrameTime > Math.max(100, stepMs * 8)) nextFrameTime = time;
+        const maxCatchUp = Math.min(8, Math.max(4, Math.ceil(playbackSpeed * 3)));
+        let pending = 0;
+        let cursor = nextFrameTime;
+        while (time >= cursor && pending < maxCatchUp) {
+          cursor += stepMs;
+          pending++;
+        }
+        for (let i = 0; i < pending && running && !disposed; i++) {
+          stepFrame(i === pending - 1, false);
+          nextFrameTime += stepMs;
         }
         if (running) rafID = requestFrame(tick);
       };
@@ -221,17 +376,18 @@ export async function create({ canvas = null, onFrame = null, onAudio = null, au
       if (!audioContext) {
         const AudioContextClass = globalThis.AudioContext ?? globalThis.webkitAudioContext;
         if (!AudioContextClass) return false;
-        audioContext = new AudioContextClass({ latencyHint: 'interactive' });
+        audioContext = new AudioContextClass({ latencyHint: 'interactive', sampleRate: runtime.sampleRate || 48000 });
         gain = audioContext.createGain();
         gain.gain.value = currentVolume;
         gain.connect(audioContext.destination);
       }
       if (audioContext.state === 'suspended') await audioContext.resume();
+      await initWorklet();
       return audioContext.state === 'running';
     },
     getDiagnostics() {
       assertLive();
-      return { loaded, running, keyboardDevice: core._xn_keyboard_device(), keyboardPolls: core._xn_keyboard_polls(), frameNumber: core._xn_frame_number(), width: core._xn_width(), height: core._xn_height(), fps: runtime.fps, sampleRate: runtime.sampleRate, audioState: audioContext?.state ?? 'uninitialized', volume: currentVolume };
+      return { loaded, running, keyboardDevice: core._xn_keyboard_device(), keyboardPolls: core._xn_keyboard_polls(), frameNumber: core._xn_frame_number(), width: core._xn_width(), height: core._xn_height(), fps: runtime.fps, sampleRate: runtime.sampleRate, audioState: audioContext?.state ?? 'uninitialized', audioBackend: workletReady ? 'worklet' : 'buffer-source', speed: playbackSpeed, volume: currentVolume };
     },
     async destroy() {
       if (disposed) return;
@@ -241,6 +397,8 @@ export async function create({ canvas = null, onFrame = null, onAudio = null, au
       core._xn_destroy();
       loaded = false;
       disposed = true;
+      workletReady = false;
+      if (workletNode) { try { workletNode.disconnect(); } catch {} workletNode = null; }
       if (audioContext && audioContext.state !== 'closed') await audioContext.close();
     }
   };
