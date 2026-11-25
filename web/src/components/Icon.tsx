@@ -30,6 +30,12 @@ const paths = {
   folder: <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>,
   delete: <><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></>,
   edit: <><path d="m16 3 5 5-12 12-6 1 1-6ZM13 6l5 5"/></>,
+  panel: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></>,
+  camera: <><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.5"/></>,
+  image: <><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 16-5-5-6 6-2-2-5 5"/></>,
+  rewind: <><path d="m11 19-9-7 9-7v14Z"/><path d="m22 19-9-7 9-7v14Z"/></>,
+  display: <><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></>,
+  spark: <path d="M13 2 4 14h7l-1 8 10-12h-7l0-8Z"/>,
 } satisfies Record<string, React.ReactNode>;
 
 export type IconName = keyof typeof paths;

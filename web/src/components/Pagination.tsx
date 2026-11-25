@@ -25,21 +25,22 @@ export function Pagination({ query, position }: { query: LibraryQueryState; posi
     change({ page: value }); setJumpError('');
   };
   const all = pageSize === 'all';
+  const showNavigation = all || totalPages > 1;
   const sizeValue = custom ? 'custom' : String(pageSize);
   const range = all && allStatus !== 'complete'
     ? `已加载 ${result?.games.length ?? 0} / 共 ${result?.total ?? '—'} 条（${allStatus === 'loading' ? '加载中' : allStatus === 'cancelled' ? '已取消，未完成' : '未完成'}）`
     : result ? `${result.rangeStart}–${result.rangeEnd} / 共 ${result.total} 条` : '0–0 / 共 — 条';
-  return <nav className="pagination" aria-label={position === 'top' ? '顶部分页' : '底部分页'} aria-busy={loading}>
-    <div className="pagination-summary"><span className="pagination-range" role={position === 'top' ? 'status' : undefined}>{range}</span><div className="pagination-size"><label htmlFor={`${id}-size`}>每页</label><select id={`${id}-size`} value={sizeValue} onChange={(event) => {
+  return <nav className={`pagination${showNavigation ? '' : ' pagination-compact'}`} aria-label={position === 'top' ? '顶部分页' : '底部分页'} aria-busy={loading}>
+    <div className="pagination-summary"><span className="pagination-range" role={position === 'top' ? 'status' : undefined}>{range}</span>{!showNavigation && <span className="pagination-page">第 1 / 1 页</span>}<div className="pagination-size"><label htmlFor={`${id}-size`}>每页</label><select id={`${id}-size`} value={sizeValue} onChange={(event) => {
       const value = event.target.value;
       if (value === 'custom') { setCustom(true); setDraft(String(all ? 20 : pageSize)); setSizeError(''); }
       else { setCustom(false); change({ pageSize: value === 'all' ? 'all' : Number(value) as LibraryPageSize }); }
     }}><option value="20">20 条</option><option value="50">50 条</option><option value="100">100 条</option>{!all && ![20, 50, 100].includes(pageSize) && <option value={String(pageSize)}>{pageSize} 条（自定义）</option>}<option value="custom">自定义</option><option value="all">全部</option></select></div></div>
     {custom && <form className="pagination-custom" onSubmit={(event) => { event.preventDefault(); applySize(); }}><label htmlFor={`${id}-custom`}>每页条数</label><input id={`${id}-custom`} type="text" inputMode="numeric" value={draft} onChange={(event) => { setDraft(event.target.value); setSizeError(''); }} aria-describedby={`${id}-size-hint`} aria-invalid={!!sizeError}/><span id={`${id}-size-hint`}>1–500 条，整数</span><button className="button secondary" type="submit">应用</button><button className="button secondary" type="button" onClick={() => { setCustom(false); setSizeError(''); }}>取消</button>{sizeError && <p className="pagination-error" role="alert">{sizeError}</p>}</form>}
-    <div className="pagination-navigation"><div className="pagination-pages"><button className="button secondary" disabled={all || page <= 1} onClick={() => change({ page: 1 })}>首页</button><button className="button secondary" disabled={all || page <= 1} onClick={() => change({ page: page - 1 })}>上一页</button><span className="pagination-page">第 {all ? 1 : page} / {totalPages} 页</span><button className="button secondary" disabled={all || page >= totalPages} onClick={() => change({ page: page + 1 })}>下一页</button><button className="button secondary" disabled={all || page >= totalPages} onClick={() => change({ page: totalPages })}>尾页</button></div>
+    {showNavigation && <div className="pagination-navigation"><div className="pagination-pages"><button className="button secondary" disabled={all || page <= 1} onClick={() => change({ page: 1 })}>首页</button><button className="button secondary" disabled={all || page <= 1} onClick={() => change({ page: page - 1 })}>上一页</button><span className="pagination-page">第 {all ? 1 : page} / {totalPages} 页</span><button className="button secondary" disabled={all || page >= totalPages} onClick={() => change({ page: page + 1 })}>下一页</button><button className="button secondary" disabled={all || page >= totalPages} onClick={() => change({ page: totalPages })}>尾页</button></div>
       <form className="pagination-jump" onSubmit={(event) => { event.preventDefault(); applyJump(); }}><label htmlFor={`${id}-jump`}>跳至</label><input id={`${id}-jump`} type="text" inputMode="numeric" value={jump} onChange={(event) => { setJump(event.target.value); setJumpError(''); }} aria-label="跳至页码" aria-describedby={`${id}-jump-hint`} aria-invalid={!!jumpError} disabled={all}/><span>页</span><button className="button secondary" type="submit" disabled={all}>跳转</button><span id={`${id}-jump-hint`} className="sr-only">页码范围 1–{totalPages}</span>{jumpError && <p className="pagination-error" role="alert">{jumpError}</p>}</form>
       {all && allStatus === 'loading' && <button className="button secondary" onClick={query.cancelAll}>取消加载</button>}
       {all && ['cancelled', 'changed', 'failed'].includes(allStatus) && <button className="button secondary" onClick={query.refresh}>重新加载全部</button>}
-    </div>
+    </div>}
   </nav>;
 }

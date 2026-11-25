@@ -8,6 +8,12 @@ import { Brand } from './Brand';
 import { ErrorNotice, Loading } from './States';
 import { Icon } from './Icon';
 
+interface ExternalSourceOffer {
+  archive?: string;
+  sha256?: string;
+  repositoryUrl?: string;
+}
+
 function SupportImage({ asset, onMissing }: { asset: SupportAsset; onMissing: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -23,21 +29,61 @@ function SupportImage({ asset, onMissing }: { asset: SupportAsset; onMissing: ()
   };
   return <figure className="support-image"><a href={asset.url} target="_blank" rel="noopener noreferrer" aria-label={`放大${asset.label}`}><img src={asset.url} alt={asset.label} loading="eager" onError={onMissing}/></a><figcaption>{asset.label}</figcaption><button className="text-button" disabled={saving} onClick={() => void saveOriginal()}>{saving ? '正在保存…' : '保存原图'}</button>{error && <p className="danger-text" role="alert">{error}</p>}</figure>;
 }
+
 export function AboutDialog({ version, onClose }: { version: string | null; onClose: () => void }) {
   const [assets, setAssets] = useState<SupportAsset[]>([]);
   const [missing, setMissing] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [sourceOffer, setSourceOffer] = useState<ExternalSourceOffer | null>(null);
+
   useEffect(() => {
     const abort = new AbortController();
     setLoading(true); setError(''); setMissing(new Set());
     void api.supportAssets(abort.signal).then(setAssets).catch((cause) => { if (!abort.signal.aborted) setError(errorMessage(cause)); }).finally(() => { if (!abort.signal.aborted) setLoading(false); });
     return () => abort.abort();
   }, [revision]);
+
+  useEffect(() => {
+    if (typeof fetch !== 'function') return;
+    const abort = new AbortController();
+    void fetch(appUrl('source/SOURCE-OFFER.json'), { credentials: 'same-origin', signal: abort.signal })
+      .then(async (response) => {
+        if (!response.ok || !/json/.test(response.headers.get('content-type') || '')) return;
+        const data = await response.json() as ExternalSourceOffer;
+        if (!abort.signal.aborted && (data.repositoryUrl || data.archive)) setSourceOffer(data);
+      })
+      .catch(() => { /* Embedded source.zip builds do not include SOURCE-OFFER.json. */ });
+    return () => abort.abort();
+  }, []);
+
   const visible = assets.filter((asset) => !missing.has(asset.url));
+  const safeRepo = sourceOffer?.repositoryUrl && /^https?:\/\//.test(sourceOffer.repositoryUrl) ? sourceOffer.repositoryUrl : null;
+
   return <Dialog title="关于与支持" onClose={onClose}>
-    <div className="about-brand"><Brand/><span>{version ? `版本 ${version}` : 'NES 学习机'}</span></div><p className="about-copy">{APP_NAME}让自己的游戏与学习卡带有个家。游戏兼容性取决于卡带和当前模拟器核心。</p><div className="about-license"><Icon name="cartridge" size={20}/><div><p>模拟器核心及第三方组件保留各自的开源许可。</p><div className="button-row"><a className="text-button" href={appUrl('source/source.zip')} download>下载对应源码</a><a className="text-button" href={appUrl('licenses/INDEX.txt')} target="_blank" rel="noopener noreferrer">查看开源许可</a></div></div></div>
-    <section className="support-section"><h3>请作者喝杯咖啡</h3><p>用得顺手的话，随意支持一下。谢谢！</p>{loading ? <Loading label="正在读取赞赏码…"/> : error ? <ErrorNotice message={error} onRetry={() => setRevision((value) => value + 1)}/> : missing.size > 0 && visible.length === 0 ? <ErrorNotice message="内置赞赏码图片暂时无法读取。" onRetry={() => setRevision((value) => value + 1)}/> : visible.length ? <><div className="support-images">{visible.map((asset) => <SupportImage key={`${asset.url}:${revision}`} asset={asset} onMissing={() => setMissing((current) => new Set([...current, asset.url]))}/>)}</div>{missing.size > 0 && <ErrorNotice message="部分赞赏码图片暂时无法读取。" onRetry={() => setRevision((value) => value + 1)}/>}</> : <div className="support-absent">赞赏码尚未配置</div>}</section><div className="dialog-footer"><span/><button className="button secondary" onClick={onClose}>关闭</button></div>
+    <div className="about-brand"><Brand/><span>{version ? `版本 ${version}` : 'NES 学习机'}</span></div>
+    <p className="about-copy">{APP_NAME}让自己的游戏与学习卡带有个家。游戏兼容性取决于卡带和当前模拟器核心。</p>
+    <div className="about-license">
+      <Icon name="cartridge" size={20}/>
+      <div>
+        <p>模拟器核心及第三方组件保留各自的开源许可。</p>
+        <div className="button-row">
+          {sourceOffer ? (
+            safeRepo ? <a className="text-button" href={safeRepo} target="_blank" rel="noopener noreferrer">获取伴随对应源码</a> : null
+          ) : (
+            <a className="text-button" href={appUrl('source/source.zip')} download>下载对应源码</a>
+          )}
+          <a className="text-button" href={appUrl('licenses/INDEX.txt')} target="_blank" rel="noopener noreferrer">查看开源许可</a>
+        </div>
+        {sourceOffer && <p className="about-source-note">当前为外置源码瘦身包，对应源码由伴随包 {sourceOffer.archive || '小牛霸王学习机-源码.zip'} 提供{sourceOffer.sha256 ? `（SHA-256 前缀 ${sourceOffer.sha256.slice(0, 12)}）` : ''}。</p>}
+      </div>
+    </div>
+    <section className="support-section">
+      <h3>请作者喝杯咖啡</h3>
+      <p>用得顺手的话，随意支持一下。谢谢！</p>
+      {loading ? <Loading label="正在读取赞赏码…"/> : error ? <ErrorNotice message={error} onRetry={() => setRevision((value) => value + 1)}/> : missing.size > 0 && visible.length === 0 ? <ErrorNotice message="内置赞赏码图片暂时无法读取。" onRetry={() => setRevision((value) => value + 1)}/> : visible.length ? <><div className="support-images">{visible.map((asset) => <SupportImage key={`${asset.url}:${revision}`} asset={asset} onMissing={() => setMissing((current) => new Set([...current, asset.url]))}/>)}</div>{missing.size > 0 && <ErrorNotice message="部分赞赏码图片暂时无法读取。" onRetry={() => setRevision((value) => value + 1)}/>}</> : <div className="support-absent">赞赏码尚未配置</div>}
+    </section>
+    <div className="dialog-footer"><span/><button className="button secondary" onClick={onClose}>关闭</button></div>
   </Dialog>;
 }

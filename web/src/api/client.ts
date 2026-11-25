@@ -122,17 +122,17 @@ function normalizeSave(value: unknown): SaveRecord | null {
     slot: number(raw.slot) ?? 1, createdAt: nullableText(raw.updatedAt ?? raw.updated_at ?? raw.createdAt ?? raw.created_at),
     url: localAssetUrl(raw.url ?? raw.downloadUrl ?? raw.download_url), etag: nullableText(raw.etag ?? raw.eTag),
     core: text(raw.core), coreVersion: text(raw.coreVersion ?? raw.core_version), romSha256: text(raw.romSha256 ?? raw.rom_sha256),
-    size: number(raw.size),
+    size: number(raw.size), thumbUrl: localAssetUrl(raw.thumbUrl ?? raw.thumb_url),
   };
 }
 export interface SaveUpload { game: Game; kind: 'state' | 'sram'; slot: number; core: string; coreVersion: string; bytes: Uint8Array; existing?: SaveRecord }
 export interface NasEntry { path: string; name: string; kind: 'directory' | 'rom'; size?: number }
 export interface NasRootDiagnostics { authorized: number; usable: number; invalidPath: number; aclDenied: number; directoryUnreadable: number; duplicate: number }
 export interface NasRoots { available: boolean; roots: NasEntry[]; capabilities: { browse: boolean; importFiles: boolean; scan: boolean }; diagnostics?: NasRootDiagnostics; issue?: 'directoryUnreadable' }
-export interface NasDirectory { path: string; parent: string | null; root: string; entries: NasEntry[]; truncated: boolean }
+export interface NasDirectory { path: string; parent: string | null; root: string; entries: NasEntry[]; truncated: boolean; skippedLinks?: number }
 export interface NasFailure { path: string; code: string; message: string }
-export interface ScanJob { id: string; path: string; status: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed'; visited: number; discovered: number; imported: number; failed: number; errors: NasFailure[]; startedAt: string; finishedAt?: string }
-export interface NasImportResult { games: unknown[]; imported: number; failed: NasFailure[] }
+export interface ScanJob { id: string; path: string; status: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed'; visited: number; discovered: number; imported: number; skipped?: number; failed: number; errors: NasFailure[]; startedAt: string; finishedAt?: string }
+export interface NasImportResult { games: unknown[]; imported: number; skipped?: number; failed: NasFailure[] }
 export class NasRootsError extends ApiError {
   constructor(message: string, status: number, public readonly available: boolean) { super(message, status); }
 }
@@ -185,7 +185,7 @@ async function requestNasRoots(signal?: AbortSignal): Promise<NasRoots> {
   if (!isJson) throw new NasRootsError('服务器目录返回了非 JSON 内容，请检查 API 地址与应用版本。', response.status, false);
   return normalizeNasRoots(raw, response.status);
 }
-export interface RestoreResult { importedGames: number; existingGames: number; restoredSaves: number; conflicts: { kind: string; id: string; message: string }[]; settingsRestored: boolean }
+export interface RestoreResult { importedGames: number; existingGames: number; restoredSaves: number; restoredCovers?: number; conflicts: { kind: string; id: string; message: string }[]; settingsRestored: boolean }
 
 export const api = {
   async health(signal?: AbortSignal): Promise<Health> {
@@ -240,11 +240,30 @@ export const api = {
   async rename(id: string, title: string): Promise<void> { await request(`/games/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ title }) }); },
   async deleteGame(id: string): Promise<void> { await request(`/games/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   async favorite(id: string, favorite: boolean): Promise<void> { await request(`/games/${encodeURIComponent(id)}/favorite`, { method: 'PUT', body: JSON.stringify({ favorite }) }); },
-  async importGame(file: File, title?: string): Promise<void> {
+  async uploadCover(id: string, data: Blob | Uint8Array): Promise<Game> {
+    const body = data instanceof Blob ? data : new Blob([new Uint8Array(data)], { type: 'image/png' });
+    const payload = await request(`/games/${encodeURIComponent(id)}/cover`, {
+      method: 'PUT',
+      headers: { 'Content-Type': body.type || 'image/png' },
+      body,
+    });
+    const game = normalizeGame(object(payload).game ?? payload);
+    if (!game) throw new ApiError('封面更新响应格式不正确。', 200);
+    return game;
+  },
+  async deleteCover(id: string): Promise<Game> {
+    const payload = await request(`/games/${encodeURIComponent(id)}/cover`, { method: 'DELETE' });
+    const game = normalizeGame(object(payload).game ?? payload);
+    if (!game) throw new ApiError('封面删除响应格式不正确。', 200);
+    return game;
+  },
+  async importGame(file: File, title?: string): Promise<Game | null> {
     const form = new FormData();
     form.append('file', file, file.name);
     if (title?.trim()) form.append('title', title.trim());
-    await request('/games', { method: 'POST', body: form, signal: AbortSignal.timeout(180_000) });
+    const payload = await request('/games', { method: 'POST', body: form, signal: AbortSignal.timeout(180_000) });
+    const raw = object(payload);
+    return normalizeGame(raw.game ?? (Array.isArray(raw.games) ? raw.games[0] : payload));
   },
   async launch(id: string, signal?: AbortSignal): Promise<LaunchInfo> {
     const raw = object(await request(`/games/${encodeURIComponent(id)}/launch`, { method: 'POST', signal }));
@@ -275,12 +294,28 @@ export const api = {
     return saved;
   },
   async saveBytes(save: SaveRecord): Promise<Uint8Array> { return fetchBytes(save.url || appUrl(`api/saves/${encodeURIComponent(save.id)}`)); },
+  async uploadSaveThumb(saveId: string, data: Blob | Uint8Array): Promise<SaveRecord | null> {
+    const body = data instanceof Blob ? data : new Blob([new Uint8Array(data)], { type: 'image/png' });
+    const payload = await request(`/saves/${encodeURIComponent(saveId)}/thumb`, {
+      method: 'PUT',
+      headers: { 'Content-Type': body.type || 'image/png' },
+      body,
+    });
+    return normalizeSave(object(payload).save ?? payload);
+  },
+  async deleteSave(save: SaveRecord): Promise<void> {
+    if (!save.etag) throw new ApiError('存档缺少版本标识，请刷新存档列表后重试。', 412);
+    await request(`/saves/${encodeURIComponent(save.id)}`, { method: 'DELETE', headers: { 'If-Match': save.etag } });
+  },
   async settings(signal?: AbortSignal): Promise<Settings> {
     const payload = await request('/settings', { signal });
     const raw = object(object(payload).settings ?? payload);
+    const defaultTouchControls = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)').matches
+      : true;
     return {
       ...raw, volume: Math.max(0, Math.min(1, number(raw.volume) ?? DEFAULT_SETTINGS.volume)), muted: boolean(raw.muted),
-      pixelated: boolean(raw.pixelated, true), showTouchControls: boolean(raw.showTouchControls ?? raw.show_touch_controls, true),
+      pixelated: boolean(raw.pixelated, true), showTouchControls: boolean(raw.showTouchControls ?? raw.show_touch_controls, defaultTouchControls),
       keyboardMappings: normalizeMappings(raw.keyboardMappings),
       touchSize: Math.max(0.85, Math.min(1.2, number(raw.touchSize) ?? 1)),
       touchOpacity: Math.max(0.3, Math.min(1, number(raw.touchOpacity) ?? 1)),
@@ -296,7 +331,9 @@ export const api = {
   async nasScan(path: string): Promise<ScanJob> { return await request('/nas/scan', { method: 'POST', body: JSON.stringify({ path }) }) as ScanJob; },
   async nasScanStatus(id: string, signal?: AbortSignal): Promise<ScanJob> { return await request(`/nas/scan/${encodeURIComponent(id)}`, { signal }) as ScanJob; },
   async nasCancelScan(id: string): Promise<ScanJob> { return await request(`/nas/scan/${encodeURIComponent(id)}`, { method: 'DELETE' }) as ScanJob; },
-  async backup(): Promise<Uint8Array> { return fetchBytes(appUrl('api/backup')); },
+  async backup(mode: 'full' | 'saves' = 'full'): Promise<Uint8Array> {
+    return fetchBytes(appUrl(mode === 'saves' ? 'api/backup?mode=saves' : 'api/backup'));
+  },
   async restore(file: File): Promise<RestoreResult> {
     const form = new FormData(); form.append('file', file, file.name);
     return await request('/backup/restore', { method: 'POST', body: form, signal: AbortSignal.timeout(180_000) }) as RestoreResult;

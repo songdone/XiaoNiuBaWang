@@ -1,0 +1,64 @@
+/* Game detail page: hero, metadata table, interactive save list, management actions. */
+.detail-hero { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 48px; align-items: center; margin-top: 24px; padding: 0 0 34px; }
+.detail-cover-column { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.detail-cover-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.detail-title-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.detail-title-row h1 { margin-top: 0; font-size: 32px; line-height: 1.4; overflow-wrap: anywhere; }
+.detail-title-row .title-edit-button { width: 38px; height: 38px; min-width: 38px; min-height: 38px; color: var(--muted); }
+.detail-title-row .title-edit-button:hover:not(:disabled) { color: var(--ink); }
+.detail-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.original-title { font-size: 13px !important; letter-spacing: .2px; color: var(--muted); margin-top: 8px !important; }
+.detail-description { font-size: 14px; line-height: 1.85; color: var(--ink-secondary); margin-top: 14px; max-width: 560px; }
+.detail-play-record { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; margin: 18px 0; }
+.detail-hint { font-size: 12px; color: var(--muted); margin-top: 12px; }
+
+.detail-columns { display: grid; grid-template-columns: 1.1fr 1fr; gap: 36px; border-top: 1px solid var(--line); padding-top: 28px; }
+.detail-section h2 { font-size: 16px; margin-bottom: 16px; }
+.detail-section h2 > span { font-size: 12px; color: var(--muted); margin-left: 8px; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.metadata-list { margin: 0; font-size: 13px; }
+.metadata-list > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); padding: 10px 0; border-bottom: 1px solid var(--line); gap: 16px; }
+.metadata-list dt { color: var(--muted); }
+.metadata-list dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.metadata-list .hash-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--muted); }
+
+.inline-empty { display: flex; align-items: center; flex-direction: column; justify-content: center; background: var(--surface-alt); border-radius: 9px; min-height: 170px; padding: 22px; color: var(--muted); text-align: center; }
+.inline-empty p { font-size: 14px; color: var(--ink-secondary); margin-top: 12px; font-weight: 500; }
+.inline-empty span { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+.save-list { list-style: none; padding: 0; margin: 0; }
+.save-list li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--muted); flex-wrap: wrap; }
+.save-list-thumb { width: 56px; height: 42px; border-radius: 5px; object-fit: contain; background: #071015; border: 1px solid var(--line); image-rendering: pixelated; flex: none; }
+.save-list li > div:first-of-type { min-width: 0; flex: 1 1 180px; }
+.save-list strong { display: block; font-weight: 600; font-size: 13px; overflow-wrap: anywhere; color: var(--ink); }
+.save-list span { display: block; font-size: 12px; color: var(--muted); line-height: 1.65; margin-top: 2px; }
+.save-item-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.save-item-actions .text-button { font-size: 12px; min-height: 36px; padding: 6px 8px; }
+.save-item-actions .icon-button { width: 36px; height: 36px; min-height: 36px; }
+
+.game-controls-help { border-top: 1px solid var(--line); margin-top: 26px; padding: 24px 0 6px; }
+.game-controls-help h2 { font-size: 16px; color: var(--ink); }
+.game-controls-help p { font-size: 13px; color: var(--ink-secondary); line-height: 1.9; margin-top: 12px; white-space: pre-line; }
+.game-controls-help > span { display: block; font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+.library-management { margin-top: 32px; padding: 22px 0; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.library-management h2 { font-size: 15px; }
+.library-management p { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+@media (max-width: 1120px) {
+  .detail-hero { grid-template-columns: 220px minmax(0, 1fr); gap: 30px; }
+  .detail-intro h1 { font-size: 27px; }
+  .detail-columns { gap: 24px; }
+  .library-management { align-items: flex-start; flex-direction: column; gap: 16px; }
+}
+@media (max-width: 820px) {
+  .detail-hero { grid-template-columns: 180px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .detail-columns { grid-template-columns: 1fr; gap: 26px; }
+}
+@media (max-width: 640px) {
+  .detail-hero { grid-template-columns: 1fr; gap: 22px; padding-bottom: 24px; margin-top: 18px; }
+  .detail-cover-column .cartridge-art { max-width: 200px; }
+  .detail-title-row { margin-top: 12px; }
+  .detail-title-row h1 { font-size: 25px; }
+  .metadata-list > div { grid-template-columns: 82px 1fr; gap: 12px; }
+}

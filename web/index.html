@@ -3,6 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        var scheme = localStorage.getItem('xnbw:color-scheme');
+        if (scheme === 'light' || scheme === 'dark') {
+          var meta = document.querySelector('meta[name="color-scheme"]');
+          if (meta) meta.setAttribute('content', scheme);
+        }
+      } catch (e) {}
+    </script>
     <meta name="theme-color" content="#142638" />
     <meta name="description" content="小牛霸王，自己的 NES 游戏与学习卡带库。导入卡带，连接手柄，在电脑与手机上使用。" />
     <meta name="page-type" content="software" />

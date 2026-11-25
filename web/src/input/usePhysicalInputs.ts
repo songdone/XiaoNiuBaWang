@@ -5,6 +5,24 @@ import { DEFAULT_MAPPINGS, type InputMappings } from './mappings';
 
 const NON_GAME_TARGETS = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), dialog, [role="dialog"], [role="toolbar"]';
 
+function isIdlePageFocus(target: EventTarget | null) {
+  if (!target || target === window || target instanceof Window || target === document) return true;
+  if (!(target instanceof Element)) return true;
+  if (target === document.body || target === document.documentElement || target.id === 'main-content') return true;
+  if (target.closest(NON_GAME_TARGETS)) return false;
+  if (target.closest('button, a, [role="button"]')) return false;
+  return false;
+}
+
+function matchesMappedKey(code: string, mappings: InputMappings) {
+  for (const player of [1, 2] as PlayerNumber[]) {
+    for (const mapped of Object.values(mappings[player])) {
+      if (mapped === code) return true;
+    }
+  }
+  return false;
+}
+
 function acceptsInput(target: EventTarget | null, scope?: RefObject<HTMLElement | null>) {
   if (!(target instanceof Element)) return !scope;
   if (target.closest(NON_GAME_TARGETS)) return false;
@@ -21,14 +39,37 @@ function dialogOpen() {
   return !!document.querySelector('dialog[open]');
 }
 
-export function usePhysicalInputs(input: InputController, enabled: boolean, learning: boolean, mappings: InputMappings = DEFAULT_MAPPINGS, scope?: RefObject<HTMLElement | null>) {
+export function usePhysicalInputs(
+  input: InputController,
+  enabled: boolean,
+  learning: boolean,
+  mappings: InputMappings = DEFAULT_MAPPINGS,
+  scope?: RefObject<HTMLElement | null>,
+  fallbackFocus?: RefObject<HTMLElement | null>,
+) {
   const [gamepads, setGamepads] = useState<string[]>([]);
   useEffect(() => {
     if (!enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target === window || event.target instanceof Window || event.target === document ? document.activeElement : event.target;
       if (dialogOpen()) { input.releaseAll(); return; }
-      if (!acceptsInput(target, scope) || (scope && !acceptsInput(document.activeElement, scope))) return;
+      let accepted = acceptsInput(target, scope) && (!scope || acceptsInput(document.activeElement, scope));
+      if (
+        !accepted
+        && !learning
+        && fallbackFocus?.current
+        && !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+        && isIdlePageFocus(target)
+        && isIdlePageFocus(document.activeElement)
+        && matchesMappedKey(event.code, mappings)
+        && (!scope?.current || scope.current.contains(fallbackFocus.current))
+      ) {
+        fallbackFocus.current.focus({ preventScroll: true });
+        accepted = true;
+      }
+      if (!accepted) return;
       if (target instanceof Element && target.closest('[data-input-control]') && ['Enter', 'Space'].includes(event.code)) return;
       if (event.metaKey || event.code.startsWith('Meta') || event.code === 'Tab' || (event.ctrlKey && event.altKey && event.code === 'Delete')) return;
       if (!learning && (event.ctrlKey || event.altKey)) return;
@@ -47,7 +88,9 @@ export function usePhysicalInputs(input: InputController, enabled: boolean, lear
           for (const [button, code] of Object.entries(mappings[player])) {
             if (code === event.code) {
               event.preventDefault();
-              input.setButton(source, player, button as ControllerButton, true);
+              if (button === 'turboA') input.setTurbo(source, player, 'a', true);
+              else if (button === 'turboB') input.setTurbo(source, player, 'b', true);
+              else input.setButton(source, player, button as ControllerButton, true);
             }
           }
         }
@@ -75,13 +118,20 @@ export function usePhysicalInputs(input: InputController, enabled: boolean, lear
       document.removeEventListener('fullscreenchange', release);
       input.releasePrefix('physical:');
     };
-  }, [input, enabled, learning, mappings, scope]);
+  }, [input, enabled, learning, mappings, scope, fallbackFocus]);
 
   useEffect(() => {
     let frame = 0;
+    let active = true;
     let lastNames = '';
     let lastIndexes = new Set<number>();
+    const schedule = () => {
+      if (!active || frame !== 0) return;
+      frame = requestAnimationFrame(poll);
+    };
     const poll = () => {
+      frame = 0;
+      if (!active) return;
       let pads: (Gamepad | null)[] = [];
       try { pads = typeof navigator.getGamepads === 'function' ? [...navigator.getGamepads()] : []; }
       catch { /* Browser may disallow gamepad access outside a secure context. */ }
@@ -95,14 +145,16 @@ export function usePhysicalInputs(input: InputController, enabled: boolean, lear
       }
       lastIndexes = activeIndexes;
       connected.slice(0, 2).forEach((pad, position) => {
-        if (!enabled || document.hidden || !document.hasFocus() || dialogOpen() || !acceptsInput(document.activeElement, scope) || pad.mapping !== 'standard') {
+        const focusAllowed = acceptsInput(document.activeElement, scope)
+          || (!!fallbackFocus?.current && isIdlePageFocus(document.activeElement) && (!scope?.current || scope.current.contains(fallbackFocus.current)));
+        if (!enabled || document.hidden || !document.hasFocus() || dialogOpen() || !focusAllowed || pad.mapping !== 'standard') {
           input.releasePrefix(`gamepad:${pad.index}:`);
           return;
         }
         const player = (position + 1) as PlayerNumber;
         const held = (index: number) => !!pad.buttons[index]?.pressed;
         const states: Record<ControllerButton, boolean> = {
-          a: held(0) || held(2), b: held(1) || held(3),
+          a: held(0), b: held(1),
           select: held(8), start: held(9),
           up: held(12) || (pad.axes[1] ?? 0) < -0.45,
           down: held(13) || (pad.axes[1] ?? 0) > 0.45,
@@ -112,11 +164,25 @@ export function usePhysicalInputs(input: InputController, enabled: boolean, lear
         for (const [button, pressed] of Object.entries(states)) {
           input.setButton(`gamepad:${pad.index}:${button}`, player, button as ControllerButton, pressed);
         }
+        // Standard gamepad X(2)/RB(5) -> Turbo A, Y(3)/LB(4) -> Turbo B for classic shooters.
+        input.setTurbo(`gamepad:${pad.index}:turboA`, player, 'a', held(2) || held(5));
+        input.setTurbo(`gamepad:${pad.index}:turboB`, player, 'b', held(3) || held(4));
       });
-      frame = requestAnimationFrame(poll);
+      // Avoid idle 60/120 Hz rAF wakeups when no gamepad is connected; wake on gamepadconnected.
+      if (connected.length > 0 && enabled) schedule();
     };
-    frame = requestAnimationFrame(poll);
-    return () => { cancelAnimationFrame(frame); input.releasePrefix('gamepad:'); };
-  }, [input, enabled, scope]);
+    const onConnected = () => schedule();
+    const onDisconnected = () => schedule();
+    window.addEventListener('gamepadconnected', onConnected);
+    window.addEventListener('gamepaddisconnected', onDisconnected);
+    schedule();
+    return () => {
+      active = false;
+      window.removeEventListener('gamepadconnected', onConnected);
+      window.removeEventListener('gamepaddisconnected', onDisconnected);
+      if (frame !== 0) cancelAnimationFrame(frame);
+      input.releasePrefix('gamepad:');
+    };
+  }, [input, enabled, scope, fallbackFocus]);
   return gamepads;
 }

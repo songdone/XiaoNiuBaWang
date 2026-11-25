@@ -1,15 +1,28 @@
 import { useEffect, useState } from 'react';
 
-export type Route = { page: 'library' } | { page: 'game' | 'player'; id: string };
+export type Route = { page: 'library' } | { page: 'game'; id: string } | { page: 'player'; id: string; slot?: number };
 export type NavigationGuard = (target: Route) => Promise<boolean> | boolean;
 export function currentRoute(): Route {
-  const match = window.location.hash.match(/^#\/(game|play)\/([^/]+)$/);
+  const match = window.location.hash.match(/^#\/(game|play)\/([^/?]+)(?:\?slot=(\d+))?$/);
   if (!match) return { page: 'library' };
-  try { return { page: match[1] === 'play' ? 'player' : 'game', id: decodeURIComponent(match[2]) }; }
+  try {
+    const id = decodeURIComponent(match[2]);
+    if (match[1] === 'play') {
+      const parsed = match[3] ? Number(match[3]) : undefined;
+      const slot = parsed && Number.isInteger(parsed) && parsed >= 1 && parsed <= 10 ? parsed : undefined;
+      return slot ? { page: 'player', id, slot } : { page: 'player', id };
+    }
+    return { page: 'game', id };
+  }
   catch { return { page: 'library' }; }
 }
 function routeHash(route: Route) {
-  return route.page === 'library' ? '#/' : `#/${route.page === 'player' ? 'play' : 'game'}/${encodeURIComponent(route.id)}`;
+  if (route.page === 'library') return '#/';
+  if (route.page === 'player') {
+    const base = `#/play/${encodeURIComponent(route.id)}`;
+    return route.slot ? `${base}?slot=${route.slot}` : base;
+  }
+  return `#/game/${encodeURIComponent(route.id)}`;
 }
 function equal(a: Route, b: Route) { return routeHash(a) === routeHash(b); }
 let accepted: Route | null = null;
@@ -39,8 +52,10 @@ async function requestNavigation(target: Route, fromHistory = false): Promise<bo
   } catch { return false; }
   finally { requesting = false; }
 }
-export function navigate(page: 'library' | 'game' | 'player', id?: string): Promise<boolean> {
-  return requestNavigation(page === 'library' ? { page } : { page, id: id || '' });
+export function navigate(page: 'library' | 'game' | 'player', id?: string, slot?: number): Promise<boolean> {
+  if (page === 'library') return requestNavigation({ page });
+  if (page === 'player') return requestNavigation(slot ? { page, id: id || '', slot } : { page, id: id || '' });
+  return requestNavigation({ page, id: id || '' });
 }
 function onHashChange() {
   const target = currentRoute();

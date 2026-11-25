@@ -84,6 +84,7 @@ export interface SaveRecord {
   coreVersion: string;
   romSha256: string;
   size: number | null;
+  thumbUrl?: string | null;
 }
 
 export interface LaunchInfo {

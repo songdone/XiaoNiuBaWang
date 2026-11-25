@@ -1,0 +1,288 @@
+/* Design tokens, WCAG AA contrast pairs, and light/dark scheme orchestration. */
+:root {
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  font-synthesis: none;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --radius: 12px;
+  --sidebar: 236px;
+
+  /* Raw palette pairs (light / dark) */
+  --ink-light: #142638;
+  --ink-dark: #eef2f6;
+  --ink-secondary-light: #354a59;
+  --ink-secondary-dark: #c6d4df;
+  --muted-light: #52625c;
+  --muted-dark: #97aab8;
+
+  --paper-light: #f7f5ee;
+  --paper-dark: #111a24;
+  --surface-light: #fffef9;
+  --surface-dark: #182432;
+  --surface-alt-light: #efeee4;
+  --surface-alt-dark: #202f40;
+  --surface-hover-light: #e8e7dc;
+  --surface-hover-dark: #283b50;
+
+  --line-light: #d7d9ce;
+  --line-dark: #2b3d50;
+  --border-control-light: #9ca59b;
+  --border-control-dark: #4f6780;
+
+  --cream-light: #e9dfbd;
+  --cream-dark: #dfd09e;
+  --accent-light: #a64d32;
+  --accent-dark: #c95d3d;
+  --accent-hover-light: #893c24;
+  --accent-hover-dark: #de6f4d;
+  --accent-text-light: #9a442a;
+  --accent-text-dark: #ee9374;
+  --focus-ring-light: #b9784d;
+  --focus-ring-dark: #e6a472;
+
+  --danger-light: #a83c33;
+  --danger-dark: #c94e44;
+  --danger-hover-light: #892f28;
+  --danger-hover-dark: #de6056;
+  --danger-text-light: #9c382f;
+  --danger-text-dark: #f28f85;
+
+  --sidebar-bg-light: #142638;
+  --sidebar-bg-dark: #0b131c;
+  --sidebar-text-light: #d4dee5;
+  --sidebar-text-dark: #d8e2ea;
+  --sidebar-muted-light: #a2b4c2;
+  --sidebar-muted-dark: #9cb0bf;
+
+  --tag-bg-light: #e9ece0;
+  --tag-bg-dark: #233547;
+  --tag-text-light: #3d5645;
+  --tag-text-dark: #bdd8c5;
+  --tag-subtle-bg-light: #e6e4d8;
+  --tag-subtle-bg-dark: #1f2e3e;
+  --tag-subtle-text-light: #4f594c;
+  --tag-subtle-text-dark: #b4c2ce;
+
+  --notice-ok-bg-light: #ebf3e2;
+  --notice-ok-bg-dark: #182e24;
+  --notice-ok-border-light: #b6cca6;
+  --notice-ok-border-dark: #35634d;
+  --notice-ok-text-light: #2e563a;
+  --notice-ok-text-dark: #ade3bf;
+
+  --notice-err-bg-light: #fff3e4;
+  --notice-err-bg-dark: #331f1b;
+  --notice-err-border-light: #dfb996;
+  --notice-err-border-dark: #744137;
+  --notice-err-text-light: #873e22;
+  --notice-err-text-dark: #f6b6a0;
+
+  --pending-bg-light: #fff3d8;
+  --pending-bg-dark: #322715;
+  --pending-border-light: #dfc092;
+  --pending-border-dark: #70562c;
+  --pending-title-light: #7c511d;
+  --pending-title-dark: #f2cb8a;
+  --pending-text-light: #6e4e26;
+  --pending-text-dark: #e2c596;
+
+  --machine-bg-light: #e4e1d0;
+  --machine-bg-dark: #192634;
+  --machine-border-light: #cbccb5;
+  --machine-border-dark: #2f4358;
+  --machine-text-light: #495a50;
+  --machine-text-dark: #a9bcc9;
+
+  --kbd-bg-light: #fffdf4;
+  --kbd-bg-dark: #233446;
+  --kbd-border-light: #bcc2b0;
+  --kbd-border-dark: #435b73;
+
+  --card-stage-light: #e7e8df;
+  --card-stage-dark: #131e2a;
+  --scrollbar-track-light: #eceae0;
+  --scrollbar-track-dark: #15212e;
+  --scrollbar-thumb-light: #8b948e;
+  --scrollbar-thumb-dark: #546a80;
+
+  /* Default resolved tokens (fallback for browsers without light-dark()) */
+  --ink: var(--ink-light);
+  --ink-secondary: var(--ink-secondary-light);
+  --muted: var(--muted-light);
+  --paper: var(--paper-light);
+  --surface: var(--surface-light);
+  --surface-alt: var(--surface-alt-light);
+  --surface-hover: var(--surface-hover-light);
+  --line: var(--line-light);
+  --border-control: var(--border-control-light);
+  --cream: var(--cream-light);
+  --accent: var(--accent-light);
+  --accent-hover: var(--accent-hover-light);
+  --accent-text: var(--accent-text-light);
+  --focus-ring: var(--focus-ring-light);
+  --danger: var(--danger-light);
+  --danger-hover: var(--danger-hover-light);
+  --danger-text: var(--danger-text-light);
+  --sidebar-bg: var(--sidebar-bg-light);
+  --sidebar-text: var(--sidebar-text-light);
+  --sidebar-muted: var(--sidebar-muted-light);
+  --tag-bg: var(--tag-bg-light);
+  --tag-text: var(--tag-text-light);
+  --tag-subtle-bg: var(--tag-subtle-bg-light);
+  --tag-subtle-text: var(--tag-subtle-text-light);
+  --notice-ok-bg: var(--notice-ok-bg-light);
+  --notice-ok-border: var(--notice-ok-border-light);
+  --notice-ok-text: var(--notice-ok-text-light);
+  --notice-err-bg: var(--notice-err-bg-light);
+  --notice-err-border: var(--notice-err-border-light);
+  --notice-err-text: var(--notice-err-text-light);
+  --pending-bg: var(--pending-bg-light);
+  --pending-border: var(--pending-border-light);
+  --pending-title: var(--pending-title-light);
+  --pending-text: var(--pending-text-light);
+  --machine-bg: var(--machine-bg-light);
+  --machine-border: var(--machine-border-light);
+  --machine-text: var(--machine-text-light);
+  --kbd-bg: var(--kbd-bg-light);
+  --kbd-border: var(--kbd-border-light);
+  --card-stage: var(--card-stage-light);
+  --scrollbar-track: var(--scrollbar-track-light);
+  --scrollbar-thumb: var(--scrollbar-thumb-light);
+
+  /* MANDATORY: Always keep base color-scheme as light dark */
+  color-scheme: light dark;
+  color: var(--ink);
+  background: var(--paper);
+  accent-color: var(--accent);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+:root:has(> head > meta[name="color-scheme"][content="dark"]) {
+  color-scheme: dark;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
+  color-scheme: light;
+}
+
+/* Fallback for browsers without light-dark() support */
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) {
+    --ink: var(--ink-dark);
+    --ink-secondary: var(--ink-secondary-dark);
+    --muted: var(--muted-dark);
+    --paper: var(--paper-dark);
+    --surface: var(--surface-dark);
+    --surface-alt: var(--surface-alt-dark);
+    --surface-hover: var(--surface-hover-dark);
+    --line: var(--line-dark);
+    --border-control: var(--border-control-dark);
+    --cream: var(--cream-dark);
+    --accent: var(--accent-dark);
+    --accent-hover: var(--accent-hover-dark);
+    --accent-text: var(--accent-text-dark);
+    --focus-ring: var(--focus-ring-dark);
+    --danger: var(--danger-dark);
+    --danger-hover: var(--danger-hover-dark);
+    --danger-text: var(--danger-text-dark);
+    --sidebar-bg: var(--sidebar-bg-dark);
+    --sidebar-text: var(--sidebar-text-dark);
+    --sidebar-muted: var(--sidebar-muted-dark);
+    --tag-bg: var(--tag-bg-dark);
+    --tag-text: var(--tag-text-dark);
+    --tag-subtle-bg: var(--tag-subtle-bg-dark);
+    --tag-subtle-text: var(--tag-subtle-text-dark);
+    --notice-ok-bg: var(--notice-ok-bg-dark);
+    --notice-ok-border: var(--notice-ok-border-dark);
+    --notice-ok-text: var(--notice-ok-text-dark);
+    --notice-err-bg: var(--notice-err-bg-dark);
+    --notice-err-border: var(--notice-err-border-dark);
+    --notice-err-text: var(--notice-err-text-dark);
+    --pending-bg: var(--pending-bg-dark);
+    --pending-border: var(--pending-border-dark);
+    --pending-title: var(--pending-title-dark);
+    --pending-text: var(--pending-text-dark);
+    --machine-bg: var(--machine-bg-dark);
+    --machine-border: var(--machine-border-dark);
+    --machine-text: var(--machine-text-dark);
+    --kbd-bg: var(--kbd-bg-dark);
+    --kbd-border: var(--kbd-border-dark);
+    --card-stage: var(--card-stage-dark);
+    --scrollbar-track: var(--scrollbar-track-dark);
+    --scrollbar-thumb: var(--scrollbar-thumb-dark);
+  }
+}
+
+@supports (color: light-dark(white, black)) {
+  :root {
+    --ink: light-dark(var(--ink-light), var(--ink-dark));
+    --ink-secondary: light-dark(var(--ink-secondary-light), var(--ink-secondary-dark));
+    --muted: light-dark(var(--muted-light), var(--muted-dark));
+    --paper: light-dark(var(--paper-light), var(--paper-dark));
+    --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --surface-alt: light-dark(var(--surface-alt-light), var(--surface-alt-dark));
+    --surface-hover: light-dark(var(--surface-hover-light), var(--surface-hover-dark));
+    --line: light-dark(var(--line-light), var(--line-dark));
+    --border-control: light-dark(var(--border-control-light), var(--border-control-dark));
+    --cream: light-dark(var(--cream-light), var(--cream-dark));
+    --accent: light-dark(var(--accent-light), var(--accent-dark));
+    --accent-hover: light-dark(var(--accent-hover-light), var(--accent-hover-dark));
+    --accent-text: light-dark(var(--accent-text-light), var(--accent-text-dark));
+    --focus-ring: light-dark(var(--focus-ring-light), var(--focus-ring-dark));
+    --danger: light-dark(var(--danger-light), var(--danger-dark));
+    --danger-hover: light-dark(var(--danger-hover-light), var(--danger-hover-dark));
+    --danger-text: light-dark(var(--danger-text-light), var(--danger-text-dark));
+    --sidebar-bg: light-dark(var(--sidebar-bg-light), var(--sidebar-bg-dark));
+    --sidebar-text: light-dark(var(--sidebar-text-light), var(--sidebar-text-dark));
+    --sidebar-muted: light-dark(var(--sidebar-muted-light), var(--sidebar-muted-dark));
+    --tag-bg: light-dark(var(--tag-bg-light), var(--tag-bg-dark));
+    --tag-text: light-dark(var(--tag-text-light), var(--tag-text-dark));
+    --tag-subtle-bg: light-dark(var(--tag-subtle-bg-light), var(--tag-subtle-bg-dark));
+    --tag-subtle-text: light-dark(var(--tag-subtle-text-light), var(--tag-subtle-text-dark));
+    --notice-ok-bg: light-dark(var(--notice-ok-bg-light), var(--notice-ok-bg-dark));
+    --notice-ok-border: light-dark(var(--notice-ok-border-light), var(--notice-ok-border-dark));
+    --notice-ok-text: light-dark(var(--notice-ok-text-light), var(--notice-ok-text-dark));
+    --notice-err-bg: light-dark(var(--notice-err-bg-light), var(--notice-err-bg-dark));
+    --notice-err-border: light-dark(var(--notice-err-border-light), var(--notice-err-border-dark));
+    --notice-err-text: light-dark(var(--notice-err-text-light), var(--notice-err-text-dark));
+    --pending-bg: light-dark(var(--pending-bg-light), var(--pending-bg-dark));
+    --pending-border: light-dark(var(--pending-border-light), var(--pending-border-dark));
+    --pending-title: light-dark(var(--pending-title-light), var(--pending-title-dark));
+    --pending-text: light-dark(var(--pending-text-light), var(--pending-text-dark));
+    --machine-bg: light-dark(var(--machine-bg-light), var(--machine-bg-dark));
+    --machine-border: light-dark(var(--machine-border-light), var(--machine-border-dark));
+    --machine-text: light-dark(var(--machine-text-light), var(--machine-text-dark));
+    --kbd-bg: light-dark(var(--kbd-bg-light), var(--kbd-bg-dark));
+    --kbd-border: light-dark(var(--kbd-border-light), var(--kbd-border-dark));
+    --card-stage: light-dark(var(--card-stage-light), var(--card-stage-dark));
+    --scrollbar-track: light-dark(var(--scrollbar-track-light), var(--scrollbar-track-dark));
+    --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
+  }
+}
+
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 99px; }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --ink: CanvasText;
+    --ink-secondary: CanvasText;
+    --muted: GrayText;
+    --paper: Canvas;
+    --surface: Canvas;
+    --surface-alt: Canvas;
+    --line: ButtonBorder;
+    --border-control: ButtonBorder;
+    --focus-ring: Highlight;
+  }
+  .button, .game-card, .player-panel, .dialog, .notice {
+    border: 1px solid ButtonBorder;
+  }
+}

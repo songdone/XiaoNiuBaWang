@@ -33,6 +33,10 @@ async function blobBytes(blob: Blob): Promise<Uint8Array> {
   if (typeof blob.arrayBuffer === 'function') return new Uint8Array(await blob.arrayBuffer());
   return new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer)); reader.readAsArrayBuffer(blob); });
 }
+function storedSnapshotBytes(item: { bytes?: number[]; bytesB64?: string }): number[] {
+  if (typeof item.bytesB64 === 'string') return Array.from(atob(item.bytesB64), (ch) => ch.charCodeAt(0));
+  return item.bytes ?? [];
+}
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; }
 function Harness({ playerSettings = settings, onOpenInputSettings }: { playerSettings?: typeof settings; onOpenInputSettings?: () => void }) {
   const route = useRoute();
@@ -226,7 +230,7 @@ describe('Player components — mocked emulator + real API client, not WASM E2E'
     ram = new Uint8Array([66, 77]); state[0] = 99;
     fireEvent.click(screen.getByRole('button', { name: 'App 卡带库' })); await screen.findByRole('dialog', { name: '离开前保留进度' });
     const stored = JSON.parse(sessionStorage.getItem('xnbw:pending:fixture')!);
-    expect(stored.map((item: { bytes: number[] }) => item.bytes)).toEqual([[7, 8, 9], [66, 77]]);
+    expect(stored.map(storedSnapshotBytes)).toEqual([[7, 8, 9], [66, 77]]);
     fireEvent.click(screen.getByRole('button', { name: '下载快照并离开' })); await waitFor(() => expect(screen.getByTestId('route').textContent).toBe('library'));
     expect(downloads).toEqual(['测试卡带-state-1.state', '测试卡带-sram-0.sav']); expect(Array.from(await blobBytes(blobs[0]))).toEqual([7, 8, 9]); expect(Array.from(await blobBytes(blobs[1]))).toEqual([66, 77]);
   });
@@ -241,7 +245,7 @@ describe('Player components — mocked emulator + real API client, not WASM E2E'
     await setup(); await start(); ram = new Uint8Array([88, 99]);
     const event = new Event('beforeunload', { cancelable: true }); fireEvent(window, event);
     expect(event.defaultPrevented).toBe(true); expect(uploads()).toHaveLength(0);
-    expect(JSON.parse(sessionStorage.getItem('xnbw:pending:fixture')!)[0].bytes).toEqual([88, 99]);
+    expect(storedSnapshotBytes(JSON.parse(sessionStorage.getItem('xnbw:pending:fixture')!)[0])).toEqual([88, 99]);
   });
   it('flushes changed SRAM before successful internal exit', async () => {
     await setup(); await start(); ram = new Uint8Array([11, 22]);
@@ -258,7 +262,7 @@ describe('Player components — mocked emulator + real API client, not WASM E2E'
     expect((screen.getByRole('button', { name: '下载快照并离开' }) as HTMLButtonElement).disabled).toBe(true); expect(maximumUploads).toBe(1);
     const count = uploads().length; const event = new Event('beforeunload', { cancelable: true }); fireEvent(window, event);
     expect(event.defaultPrevented).toBe(true); expect(uploads()).toHaveLength(count);
-    const retained = JSON.parse(sessionStorage.getItem('xnbw:pending:fixture')!); expect(retained[0].bytes).toEqual([3, 4]);
+    const retained = JSON.parse(sessionStorage.getItem('xnbw:pending:fixture')!); expect(storedSnapshotBytes(retained[0])).toEqual([3, 4]);
     fireEvent.click(screen.getByRole('button', { name: '留在播放器' }));
     await act(async () => { pending.resolve(json({ error: '失败' }, 503)); }); vi.useRealTimers();
     cleanup(); await setup(); await screen.findByText('有一份尚未上传的本地快照');
@@ -402,7 +406,7 @@ describe('Player presentation and input lifecycle — mocked browser/emulator bo
     fireEvent.click(screen.getByRole('button', { name: '保存进度' }));
     await screen.findByText('有一份尚未上传的本地快照');
     const retained = sessionStorage.getItem('xnbw:pending:fixture');
-    expect(JSON.parse(retained!)[0].bytes).toEqual([7, 8, 9]); state[0] = 99;
+    expect(storedSnapshotBytes(JSON.parse(retained!)[0])).toEqual([7, 8, 9]); state[0] = 99;
     fireEvent.click(screen.getByRole('button', { name: '全屏游玩' }));
     await waitFor(() => expect(machine().dataset.presentation).toBe('fullscreen'));
     fireEvent.keyDown(canvas(), { code: 'KeyX', key: 'x' });
